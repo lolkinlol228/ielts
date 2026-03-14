@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Building2, CalendarClock, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
+import { Building2, CalendarClock, GraduationCap, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { api, authConfig } from "../lib/api";
@@ -13,7 +13,9 @@ const TABS = [
   { id: "students", label: "Ученики", icon: Users },
   { id: "resources", label: "Преподы / классы", icon: Building2 },
   { id: "groups", label: "Группы и переводы", icon: Settings },
+  { id: "graduates", label: "Выпускники", icon: GraduationCap },
   { id: "schedule", label: "Расписание", icon: CalendarClock },
+  { id: "account", label: "Аккаунт", icon: KeyRound },
 ];
 
 const defaultSiteDraft = {
@@ -75,6 +77,7 @@ export default function AdminDashboardPage() {
 
   const [siteDraft, setSiteDraft] = useState(defaultSiteDraft);
   const [leads, setLeads] = useState([]);
+  const [graduates, setGraduates] = useState([]);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
@@ -102,6 +105,14 @@ export default function AdminDashboardPage() {
   const [teacherDrafts, setTeacherDrafts] = useState({});
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [graduateSearchQuery, setGraduateSearchQuery] = useState("");
+  const [selectedGraduateIds, setSelectedGraduateIds] = useState([]);
+  const [adminCredentialsForm, setAdminCredentialsForm] = useState({
+    current_password: "",
+    new_username: user?.username || "",
+    new_password: "",
+  });
 
   const config = useMemo(() => authConfig(token), [token]);
 
@@ -125,6 +136,7 @@ export default function AdminDashboardPage() {
     const requests = [
       api.get("/api/admin/site-settings", withBranch()),
       api.get("/api/admin/leads", withBranch()),
+      api.get("/api/admin/graduates", withBranch()),
       api.get("/api/admin/students", withBranch()),
       api.get("/api/admin/teachers", withBranch()),
       api.get("/api/admin/classrooms", withBranch()),
@@ -133,10 +145,11 @@ export default function AdminDashboardPage() {
       api.get("/api/admin/schedule-settings", withBranch()),
     ];
 
-    const [site, leadsRes, studentsRes, teachersRes, classRes, groupsRes, schedulesRes, configRes] = await Promise.all(requests);
+    const [site, leadsRes, graduatesRes, studentsRes, teachersRes, classRes, groupsRes, schedulesRes, configRes] = await Promise.all(requests);
     setSiteDraft(site.data);
     applyTheme(site.data.colors);
     setLeads(leadsRes.data);
+    setGraduates(graduatesRes.data);
     setStudents(studentsRes.data);
     setTeachers(teachersRes.data);
     setClassrooms(classRes.data);
@@ -152,6 +165,8 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (!selectedBranchId) return;
     localStorage.setItem("admin_branch_id", selectedBranchId);
+    setSelectedLeadIds([]);
+    setSelectedGraduateIds([]);
     loadBranchData().catch(() => toast.error("Не удалось загрузить данные филиала"));
   }, [selectedBranchId]);
 
@@ -183,6 +198,10 @@ export default function AdminDashboardPage() {
     });
     setTeacherDrafts(nextDrafts);
   }, [teachers]);
+
+  useEffect(() => {
+    setAdminCredentialsForm((prev) => ({ ...prev, new_username: user?.username || prev.new_username }));
+  }, [user?.username]);
 
   const createBranch = async () => {
     if (!newBranch.name || !newBranch.location) {
@@ -263,6 +282,68 @@ export default function AdminDashboardPage() {
       toast.success("Заявка отклонена");
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Ошибка отклонения");
+    }
+  };
+
+  const toggleLeadSelection = (leadId) => {
+    setSelectedLeadIds((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
+  };
+
+  const deleteSelectedLeads = async () => {
+    if (selectedLeadIds.length === 0) {
+      toast.error("Выберите заявки");
+      return;
+    }
+    try {
+      await api.post("/api/admin/leads/delete-selected", { ids: selectedLeadIds }, withBranch());
+      setSelectedLeadIds([]);
+      await loadBranchData();
+      toast.success("Выбранные заявки удалены");
+    } catch {
+      toast.error("Ошибка удаления заявок");
+    }
+  };
+
+  const deleteAllLeads = async () => {
+    if (!window.confirm("Удалить все заявки?")) return;
+    try {
+      await api.delete("/api/admin/leads", withBranch());
+      setSelectedLeadIds([]);
+      await loadBranchData();
+      toast.success("Все заявки удалены");
+    } catch {
+      toast.error("Ошибка удаления заявок");
+    }
+  };
+
+  const toggleGraduateSelection = (graduateId) => {
+    setSelectedGraduateIds((prev) => (prev.includes(graduateId) ? prev.filter((id) => id !== graduateId) : [...prev, graduateId]));
+  };
+
+  const deleteSelectedGraduates = async () => {
+    if (selectedGraduateIds.length === 0) {
+      toast.error("Выберите выпускников");
+      return;
+    }
+    try {
+      await api.post("/api/admin/graduates/delete-selected", { ids: selectedGraduateIds }, withBranch());
+      setSelectedGraduateIds([]);
+      await loadBranchData();
+      toast.success("Выбранные выпускники удалены");
+    } catch {
+      toast.error("Ошибка удаления выпускников");
+    }
+  };
+
+  const deleteAllGraduates = async () => {
+    if (!window.confirm("Очистить весь список выпускников?")) return;
+    try {
+      await api.delete("/api/admin/graduates", withBranch());
+      setSelectedGraduateIds([]);
+      await loadBranchData();
+      toast.success("Список выпускников очищен");
+    } catch {
+      toast.error("Ошибка очистки выпускников");
     }
   };
 
@@ -456,6 +537,19 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const graduateGroup = async (groupId) => {
+    if (!window.confirm("Выпустить группу? Ученики станут выпускниками и их аккаунты будут удалены.")) {
+      return;
+    }
+    try {
+      const response = await api.post(`/api/admin/groups/${groupId}/graduate`, {}, withBranch());
+      await loadBranchData();
+      toast.success(`${response.data.message}. Выпущено: ${response.data.graduates_count}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка выпуска группы");
+    }
+  };
+
   const saveScheduleConfig = async () => {
     try {
       await api.put("/api/admin/schedule-settings", {
@@ -469,7 +563,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const generateAutoSlots = async () => {
+  const generateAutoSlots = async (silent = false) => {
     try {
       const response = await api.post("/api/admin/schedule/auto-slots", {
         ...scheduleConfig,
@@ -477,37 +571,27 @@ export default function AdminDashboardPage() {
         break_duration: Number(scheduleConfig.break_duration),
       }, withBranch());
       setAutoSlots(response.data.slots);
-      toast.success("Слоты рассчитаны");
+      if (!silent) {
+        toast.success("Слоты рассчитаны");
+      }
     } catch {
-      toast.error("Ошибка расчёта слотов");
+      if (!silent) {
+        toast.error("Ошибка расчёта слотов");
+      }
     }
   };
 
-  const checkConflicts = async () => {
-    if (!scheduleForm.teacher_id || !scheduleForm.classroom_id) {
-      toast.error("Выберите преподавателя и класс");
+  const saveAdminCredentials = async () => {
+    if (!adminCredentialsForm.current_password || !adminCredentialsForm.new_username || !adminCredentialsForm.new_password) {
+      toast.error("Заполните все поля аккаунта");
       return;
     }
     try {
-      const response = await api.get("/api/admin/schedules/conflicts", {
-        params: {
-          branch_id: selectedBranchId,
-          day: scheduleForm.day,
-          start: scheduleForm.start,
-          end: scheduleForm.end,
-          teacher_id: scheduleForm.teacher_id,
-          classroom_id: scheduleForm.classroom_id,
-        },
-        headers: config.headers,
-      });
-      setConflictState(response.data);
-      if (response.data.has_conflict) {
-        toast.error("Конфликт найден");
-      } else {
-        toast.success("Конфликтов нет");
-      }
-    } catch {
-      toast.error("Ошибка проверки конфликтов");
+      await api.put("/api/admin/me/credentials", adminCredentialsForm, config);
+      toast.success("Данные аккаунта обновлены. Войдите заново.");
+      logout();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка обновления аккаунта");
     }
   };
 
@@ -613,6 +697,22 @@ export default function AdminDashboardPage() {
     config.headers,
   ]);
 
+  useEffect(() => {
+    if (!selectedBranchId) return;
+    const timeoutId = setTimeout(() => {
+      generateAutoSlots(true);
+    }, 350);
+    return () => clearTimeout(timeoutId);
+  }, [
+    selectedBranchId,
+    scheduleConfig.start_time,
+    scheduleConfig.end_time,
+    scheduleConfig.lunch_start,
+    scheduleConfig.lunch_end,
+    scheduleConfig.lesson_duration,
+    scheduleConfig.break_duration,
+  ]);
+
   const overviewStats = {
     leads: leads.filter((item) => item.status === "pending").length,
     students: students.length,
@@ -626,6 +726,16 @@ export default function AdminDashboardPage() {
     const query = leadSearchQuery.trim().toLowerCase();
     const queryMatch = !query || lead.full_name.toLowerCase().includes(query) || lead.phone.toLowerCase().includes(query);
     return statusMatch && queryMatch;
+  });
+
+  const filteredGraduates = graduates.filter((graduate) => {
+    const query = graduateSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      graduate.full_name.toLowerCase().includes(query) ||
+      (graduate.group_name || "").toLowerCase().includes(query) ||
+      (graduate.phone || "").toLowerCase().includes(query)
+    );
   });
 
   return (
@@ -1085,11 +1195,26 @@ export default function AdminDashboardPage() {
                 <option value="approved">Подтверждены</option>
                 <option value="rejected">Отклонены</option>
               </select>
+              <button className="danger-btn" onClick={deleteSelectedLeads} data-testid="leads-delete-selected-button">
+                Удалить выбранные
+              </button>
+              <button className="danger-btn" onClick={deleteAllLeads} data-testid="leads-delete-all-button">
+                Очистить всё
+              </button>
             </div>
 
             <div className="table-like" data-testid="leads-table">
               {filteredLeads.map((lead) => (
                 <div key={lead.id} className="row" data-testid={`lead-row-${lead.id}`}>
+                  <label className="checkbox-label" data-testid={`lead-checkbox-wrap-${lead.id}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedLeadIds.includes(lead.id)}
+                      onChange={() => toggleLeadSelection(lead.id)}
+                      data-testid={`lead-checkbox-${lead.id}`}
+                    />
+                    Выбрать
+                  </label>
                   <div data-testid={`lead-name-${lead.id}`}>{lead.full_name}</div>
                   <div data-testid={`lead-phone-${lead.id}`}>{lead.phone}</div>
                   <div data-testid={`lead-status-${lead.id}`}>{lead.status}</div>
@@ -1393,6 +1518,9 @@ export default function AdminDashboardPage() {
                   <span data-testid={`group-name-${group.id}`}>
                     {group.name} {group.is_individual ? "(инд.)" : ""}
                   </span>
+                  <button className="primary-btn" onClick={() => graduateGroup(group.id)} data-testid={`group-graduate-button-${group.id}`}>
+                    Выпустить группу
+                  </button>
                   <button className="danger-btn" onClick={() => removeGroup(group.id)} data-testid={`group-delete-button-${group.id}`}>
                     Удалить
                   </button>
@@ -1473,6 +1601,58 @@ export default function AdminDashboardPage() {
                 Перевести
               </button>
             </div>
+
+            <h3 data-testid="groups-students-overview-title">Все ученики и их группы</h3>
+            <div className="table-like" data-testid="groups-students-overview-table">
+              {students.map((student) => (
+                <div key={student.id} className="row" data-testid={`groups-overview-row-${student.id}`}>
+                  <span data-testid={`groups-overview-name-${student.id}`}>{student.full_name}</span>
+                  <span data-testid={`groups-overview-phone-${student.id}`}>{student.phone}</span>
+                  <span data-testid={`groups-overview-groups-${student.id}`}>{student.groups?.join(", ") || "Без группы"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "graduates" && (
+          <section className="card" data-testid="graduates-tab-content">
+            <h2 data-testid="graduates-title">Выпускники</h2>
+            <div className="inline-form" data-testid="graduates-controls-row">
+              <input
+                placeholder="Поиск выпускников"
+                value={graduateSearchQuery}
+                onChange={(event) => setGraduateSearchQuery(event.target.value)}
+                data-testid="graduates-search-input"
+              />
+              <button className="danger-btn" onClick={deleteSelectedGraduates} data-testid="graduates-delete-selected-button">
+                Удалить выбранных
+              </button>
+              <button className="danger-btn" onClick={deleteAllGraduates} data-testid="graduates-delete-all-button">
+                Очистить всё
+              </button>
+            </div>
+
+            <div className="table-like" data-testid="graduates-table">
+              {filteredGraduates.map((graduate) => (
+                <div key={graduate.id} className="row" data-testid={`graduate-row-${graduate.id}`}>
+                  <label className="checkbox-label" data-testid={`graduate-checkbox-wrap-${graduate.id}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedGraduateIds.includes(graduate.id)}
+                      onChange={() => toggleGraduateSelection(graduate.id)}
+                      data-testid={`graduate-checkbox-${graduate.id}`}
+                    />
+                    Выбрать
+                  </label>
+                  <span data-testid={`graduate-name-${graduate.id}`}>{graduate.full_name}</span>
+                  <span data-testid={`graduate-phone-${graduate.id}`}>{graduate.phone}</span>
+                  <span data-testid={`graduate-group-${graduate.id}`}>{graduate.group_name}</span>
+                  <span data-testid={`graduate-date-${graduate.id}`}>{graduate.graduated_at?.slice(0, 10)}</span>
+                </div>
+              ))}
+              {filteredGraduates.length === 0 && <div data-testid="graduates-empty-state">Выпускников пока нет</div>}
+            </div>
           </section>
         )}
 
@@ -1541,10 +1721,9 @@ export default function AdminDashboardPage() {
               <button className="primary-btn" onClick={saveScheduleConfig} data-testid="schedule-config-save-button">
                 Сохранить настройки
               </button>
-              <button className="primary-btn" onClick={generateAutoSlots} data-testid="schedule-generate-slots-button">
-                Рассчитать уроки автоматически
-              </button>
             </div>
+
+            <p data-testid="schedule-auto-info-text">Слоты рассчитываются автоматически при изменении настроек времени.</p>
 
             <div className="simple-list" data-testid="auto-slots-list">
               {autoSlots.map((slot, index) => (
@@ -1628,9 +1807,6 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="inline-form">
-              <button className="primary-btn" onClick={checkConflicts} data-testid="schedule-check-conflicts-button">
-                Проверить конфликт
-              </button>
               <button className="primary-btn" onClick={createScheduleEntry} data-testid="schedule-save-entry-button">
                 {editingScheduleId ? "Обновить занятие" : "Сохранить занятие"}
               </button>
@@ -1695,6 +1871,49 @@ export default function AdminDashboardPage() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {activeTab === "account" && (
+          <section className="card" data-testid="account-tab-content">
+            <h2 data-testid="account-tab-title">Безопасность аккаунта администратора</h2>
+            <div className="form-grid" data-testid="admin-credentials-form">
+              <label data-testid="admin-credentials-current-password-label">
+                Текущий пароль
+                <input
+                  type="password"
+                  value={adminCredentialsForm.current_password}
+                  onChange={(event) =>
+                    setAdminCredentialsForm((prev) => ({ ...prev, current_password: event.target.value }))
+                  }
+                  data-testid="admin-credentials-current-password-input"
+                />
+              </label>
+              <label data-testid="admin-credentials-new-username-label">
+                Новый логин
+                <input
+                  value={adminCredentialsForm.new_username}
+                  onChange={(event) =>
+                    setAdminCredentialsForm((prev) => ({ ...prev, new_username: event.target.value }))
+                  }
+                  data-testid="admin-credentials-new-username-input"
+                />
+              </label>
+              <label data-testid="admin-credentials-new-password-label">
+                Новый пароль
+                <input
+                  type="password"
+                  value={adminCredentialsForm.new_password}
+                  onChange={(event) =>
+                    setAdminCredentialsForm((prev) => ({ ...prev, new_password: event.target.value }))
+                  }
+                  data-testid="admin-credentials-new-password-input"
+                />
+              </label>
+            </div>
+            <button className="primary-btn" onClick={saveAdminCredentials} data-testid="admin-credentials-save-button">
+              Обновить логин и пароль
+            </button>
           </section>
         )}
       </main>

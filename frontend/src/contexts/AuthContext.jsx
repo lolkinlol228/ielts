@@ -12,7 +12,10 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(Boolean(token));
 
   const login = async ({ username, password, branch_id }) => {
-    const payload = { username, password, branch_id: branch_id || null };
+    const payload = { username, password };
+    if (branch_id) {
+      payload.branch_id = branch_id;
+    }
     const response = await api.post("/api/auth/login", payload);
     localStorage.setItem("token", response.data.token);
     localStorage.setItem("user", JSON.stringify(response.data.user));

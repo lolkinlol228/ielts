@@ -328,6 +328,16 @@ class TransferInput(BaseModel):
     to_group_id: str
 
 
+class IdsInput(BaseModel):
+    ids: List[str]
+
+
+class AdminCredentialsInput(BaseModel):
+    current_password: str
+    new_username: str
+    new_password: str
+
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     token = credentials.credentials
     try:
@@ -378,6 +388,15 @@ def assert_branch_access(user: Dict[str, Any], branch_id: str) -> None:
 async def get_branch_db(branch_id: str) -> AsyncIOMotorDatabase:
     branch = await get_branch(branch_id)
     return client[branch["db_name"]]
+
+
+async def get_student_group_type_counts(branch_db: AsyncIOMotorDatabase, group_ids: List[str]) -> Dict[str, int]:
+    if not group_ids:
+        return {"general": 0, "individual": 0}
+    groups = await branch_db.groups.find({"id": {"$in": group_ids}}, {"_id": 0, "id": 1, "is_individual": 1}).to_list(length=500)
+    general = sum(1 for group in groups if not group.get("is_individual"))
+    individual = sum(1 for group in groups if group.get("is_individual"))
+    return {"general": general, "individual": individual}
 
 
 def create_token(user: Dict[str, Any]) -> str:
@@ -492,13 +511,17 @@ async def login(payload: LoginRequest) -> Dict[str, Any]:
     username = payload.username.strip().lower()
     branch_id = payload.branch_id
 
-    query: Dict[str, Any] = {"username": username}
+    user = None
     if branch_id:
-        query["branch_id"] = branch_id
-
-    user = await master_db.users.find_one(query, {"_id": 0})
+        user = await master_db.users.find_one({"username": username, "branch_id": branch_id}, {"_id": 0})
     if not user:
-        user = await master_db.users.find_one({"username": username, "role": "superadmin"}, {"_id": 0})
+        if username == "admin":
+            user = await master_db.users.find_one({"username": username, "role": "superadmin"}, {"_id": 0})
+        else:
+            users = await master_db.users.find({"username": username}, {"_id": 0}).to_list(length=5)
+            if len(users) > 1:
+                raise HTTPException(status_code=400, detail="Найдено несколько аккаунтов с таким логином")
+            user = users[0] if users else None
 
     if not user or not pwd_context.verify(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
@@ -663,6 +686,31 @@ async def list_leads(
     return sorted(leads, key=lambda x: x["created_at"], reverse=True)
 
 
+@app.post("/api/admin/leads/delete-selected")
+async def delete_selected_leads(
+    payload: IdsInput,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Не выбраны заявки")
+    branch_db = await get_branch_db(branch_id)
+    await branch_db.leads.delete_many({"id": {"$in": payload.ids}})
+    return {"message": "Выбранные заявки удалены"}
+
+
+@app.delete("/api/admin/leads")
+async def delete_all_leads(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    await branch_db.leads.delete_many({})
+    return {"message": "Все заявки удалены"}
+
+
 @app.post("/api/admin/leads/{lead_id}/approve")
 async def approve_lead(
     lead_id: str,
@@ -690,7 +738,7 @@ async def approve_lead(
 
     username = (payload.username or random_username(lead["full_name"])).lower()
     password = payload.password or random_password(8)
-    existing = await master_db.users.find_one({"username": username, "branch_id": branch_id}, {"_id": 0})
+    existing = await master_db.users.find_one({"username": username}, {"_id": 0})
     if existing:
         username = f"{username}{random.randint(10,99)}"
 
@@ -765,7 +813,6 @@ async def update_student_credentials(
     existing_username = await master_db.users.find_one(
         {
             "username": payload.username.lower(),
-            "branch_id": branch_id,
             "student_id": {"$ne": student_id},
         },
         {"_id": 0},
@@ -983,6 +1030,14 @@ async def assign_student_to_group(
     if not group or not student:
         raise HTTPException(status_code=404, detail="Студент или группа не найдены")
 
+    student_group_ids = student.get("group_ids", [])
+    if group_id not in student_group_ids:
+        counts = await get_student_group_type_counts(branch_db, student_group_ids)
+        if group.get("is_individual") and counts["individual"] >= 1:
+            raise HTTPException(status_code=400, detail="У студента уже есть индивидуальная группа")
+        if not group.get("is_individual") and counts["general"] >= 1:
+            raise HTTPException(status_code=400, detail="У студента уже есть общая группа")
+
     await branch_db.groups.update_one({"id": group_id}, {"$addToSet": {"student_ids": student_id}})
     await branch_db.students.update_one({"id": student_id}, {"$addToSet": {"group_ids": group_id}})
     return {"message": "Студент добавлен в группу"}
@@ -1000,11 +1055,104 @@ async def transfer_student(
         raise HTTPException(status_code=400, detail="Группа назначения должна отличаться")
 
     branch_db = await get_branch_db(branch_id)
+    student = await branch_db.students.find_one({"id": student_id}, {"_id": 0})
+    to_group = await branch_db.groups.find_one({"id": payload.to_group_id}, {"_id": 0})
+    if not student or not to_group:
+        raise HTTPException(status_code=404, detail="Студент или группа не найдены")
+
+    remaining_group_ids = [group_id for group_id in student.get("group_ids", []) if group_id != payload.from_group_id]
+    counts = await get_student_group_type_counts(branch_db, remaining_group_ids)
+    if to_group.get("is_individual") and counts["individual"] >= 1:
+        raise HTTPException(status_code=400, detail="У студента уже есть индивидуальная группа")
+    if not to_group.get("is_individual") and counts["general"] >= 1:
+        raise HTTPException(status_code=400, detail="У студента уже есть общая группа")
+
     await branch_db.groups.update_one({"id": payload.from_group_id}, {"$pull": {"student_ids": student_id}})
     await branch_db.groups.update_one({"id": payload.to_group_id}, {"$addToSet": {"student_ids": student_id}})
     await branch_db.students.update_one({"id": student_id}, {"$pull": {"group_ids": payload.from_group_id}})
     await branch_db.students.update_one({"id": student_id}, {"$addToSet": {"group_ids": payload.to_group_id}})
     return {"message": "Студент переведен"}
+
+
+@app.post("/api/admin/groups/{group_id}/graduate")
+async def graduate_group(
+    group_id: str,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, Any]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    group = await branch_db.groups.find_one({"id": group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+
+    student_ids = group.get("student_ids", [])
+    if not student_ids:
+        return {"message": "В группе нет учеников", "graduates_count": 0}
+
+    students = await branch_db.students.find({"id": {"$in": student_ids}}, {"_id": 0}).to_list(length=5000)
+    graduate_docs = []
+    for student in students:
+        graduate_docs.append(
+            {
+                "id": str(uuid.uuid4()),
+                "student_id": student["id"],
+                "full_name": student["full_name"],
+                "phone": student.get("phone", ""),
+                "group_name": group.get("name", ""),
+                "group_id": group_id,
+                "graduated_at": now_iso(),
+            }
+        )
+
+    if graduate_docs:
+        await branch_db.graduates.insert_many(graduate_docs)
+
+    await master_db.users.delete_many({"branch_id": branch_id, "student_id": {"$in": student_ids}, "role": "student"})
+    await branch_db.students.delete_many({"id": {"$in": student_ids}})
+    await branch_db.groups.update_one({"id": group_id}, {"$set": {"student_ids": [], "graduated_at": now_iso()}})
+    await branch_db.schedules.delete_many({"group_id": group_id})
+    return {"message": "Группа выпущена", "graduates_count": len(graduate_docs)}
+
+
+@app.get("/api/admin/graduates")
+async def list_graduates(
+    branch_id: str = Query(...),
+    search_query: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> List[Dict[str, Any]]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    query: Dict[str, Any] = {}
+    if search_query:
+        query["full_name"] = {"$regex": re.escape(search_query.strip()), "$options": "i"}
+    graduates = await branch_db.graduates.find(query, {"_id": 0}).to_list(length=5000)
+    return sorted(graduates, key=lambda item: item["graduated_at"], reverse=True)
+
+
+@app.post("/api/admin/graduates/delete-selected")
+async def delete_selected_graduates(
+    payload: IdsInput,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Не выбраны выпускники")
+    branch_db = await get_branch_db(branch_id)
+    await branch_db.graduates.delete_many({"id": {"$in": payload.ids}})
+    return {"message": "Выбранные выпускники удалены"}
+
+
+@app.delete("/api/admin/graduates")
+async def delete_all_graduates(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    await branch_db.graduates.delete_many({})
+    return {"message": "Все выпускники удалены"}
 
 
 @app.get("/api/admin/schedule-settings")
@@ -1297,3 +1445,33 @@ async def student_schedule(user: Dict[str, Any] = Depends(require_roles("student
         },
         "schedule": grouped,
     }
+
+
+@app.put("/api/admin/me/credentials")
+async def update_admin_credentials(
+    payload: AdminCredentialsInput,
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    existing = await master_db.users.find_one({"id": user["id"]}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if not pwd_context.verify(payload.current_password, existing["password_hash"]):
+        raise HTTPException(status_code=400, detail="Текущий пароль неверный")
+
+    candidate_username = payload.new_username.strip().lower()
+    duplicate = await master_db.users.find_one({"username": candidate_username, "id": {"$ne": user["id"]}}, {"_id": 0})
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Логин уже занят")
+
+    await master_db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "username": candidate_username,
+                "password_hash": pwd_context.hash(payload.new_password),
+                "updated_at": now_iso(),
+            }
+        },
+    )
+    return {"message": "Логин и пароль обновлены"}

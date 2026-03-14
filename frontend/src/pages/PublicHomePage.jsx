@@ -325,20 +325,6 @@ export default function PublicHomePage() {
                 </div>
               ))}
             </div>
-
-            <div className="consult-row" data-testid="consultation-info-row">
-              <div className="social-icons" data-testid="consultation-social-links">
-                <a href={social.whatsapp || "#"} target="_blank" rel="noreferrer" data-testid="consultation-whatsapp-link">
-                  <MessageCircle size={16} />
-                </a>
-                <a href={social.instagram || "#"} target="_blank" rel="noreferrer" data-testid="consultation-instagram-link">
-                  <Instagram size={16} />
-                </a>
-                <a href={social.facebook || "#"} target="_blank" rel="noreferrer" data-testid="consultation-facebook-link">
-                  <Facebook size={16} />
-                </a>
-              </div>
-            </div>
           </div>
         </section>
 
