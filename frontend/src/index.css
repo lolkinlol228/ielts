@@ -350,7 +350,7 @@ textarea {
 
 .teacher-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1rem;
   margin-top: 1rem;
 }
@@ -361,35 +361,39 @@ textarea {
   background: #fff;
   overflow: hidden;
   display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: start;
 }
 
 .teacher-card img {
-  width: 100%;
-  aspect-ratio: 4 / 3;
+  width: 92px;
+  height: 92px;
   object-fit: cover;
 }
 
 .teacher-card div {
-  padding: 1rem;
+  padding: 0.8rem;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .teacher-card h3 {
   margin: 0;
   font-family: "Outfit", sans-serif;
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .teacher-card p {
   margin: 0;
   color: var(--primary);
   font-weight: 600;
+  font-size: 0.86rem;
 }
 
 .teacher-card small {
   color: var(--secondary);
-  line-height: 1.6;
+  line-height: 1.45;
+  font-size: 0.8rem;
 }
 
 .review-card {
@@ -844,6 +848,15 @@ textarea {
   .footer-grid,
   .locations-grid {
     grid-template-columns: 1fr;
+  }
+
+  .teacher-card {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-card img {
+    width: 100%;
+    height: 170px;
   }
 
   .content-section {

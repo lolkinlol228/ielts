@@ -4,6 +4,7 @@ import uuid
 import random
 import string
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -16,7 +17,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 
-load_dotenv("/app/backend/.env")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
