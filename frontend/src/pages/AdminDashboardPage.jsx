@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { Building2, CalendarClock, GraduationCap, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
+import { Link, Navigate } from "react-router-dom";
+import { Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { api, authConfig } from "../lib/api";
@@ -791,6 +791,9 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="topbar-controls" data-testid="admin-topbar-controls">
+            <Link to="/" className="primary-btn" data-testid="admin-back-to-site-link">
+              <Home size={16} /> На сайт
+            </Link>
             <select
               value={selectedBranchId}
               onChange={(event) => setSelectedBranchId(event.target.value)}

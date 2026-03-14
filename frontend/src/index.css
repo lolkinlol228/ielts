@@ -507,6 +507,15 @@ textarea {
   gap: 0.8rem;
 }
 
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
 .auth-card h1 {
   margin: 0;
   font-family: "Outfit", sans-serif;
@@ -580,6 +589,13 @@ textarea {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+}
+
+.topbar-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
 }
 
 .dashboard-topbar h1 {

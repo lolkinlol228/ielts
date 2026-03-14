@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
@@ -39,6 +40,9 @@ export default function LoginPage() {
   return (
     <div className="auth-page" data-testid="login-page-root">
       <form className="auth-card" onSubmit={submit} data-testid="login-form">
+        <Link to="/" className="ghost-link" data-testid="login-back-to-home-link">
+          ← Вернуться на главную
+        </Link>
         <h1 data-testid="login-title">Вход в систему</h1>
 
         <label data-testid="login-label-username">Логин</label>
