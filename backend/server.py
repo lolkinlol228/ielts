@@ -829,13 +829,8 @@ async def transfer_student(
     branch_db = await get_branch_db(branch_id)
     await branch_db.groups.update_one({"id": payload.from_group_id}, {"$pull": {"student_ids": student_id}})
     await branch_db.groups.update_one({"id": payload.to_group_id}, {"$addToSet": {"student_ids": student_id}})
-    await branch_db.students.update_one(
-        {"id": student_id},
-        {
-            "$pull": {"group_ids": payload.from_group_id},
-            "$addToSet": {"group_ids": payload.to_group_id},
-        },
-    )
+    await branch_db.students.update_one({"id": student_id}, {"$pull": {"group_ids": payload.from_group_id}})
+    await branch_db.students.update_one({"id": student_id}, {"$addToSet": {"group_ids": payload.to_group_id}})
     return {"message": "Студент переведен"}
 
 
