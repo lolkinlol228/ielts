@@ -1,0 +1,1078 @@
+import { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { Building2, CalendarClock, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "../contexts/AuthContext";
+import { api, authConfig } from "../lib/api";
+
+const TABS = [
+  { id: "overview", label: "Обзор", icon: ShieldCheck },
+  { id: "site", label: "Редактор сайта", icon: Palette },
+  { id: "leads", label: "Желающие", icon: Users },
+  { id: "students", label: "Ученики", icon: Users },
+  { id: "resources", label: "Преподы / классы", icon: Building2 },
+  { id: "groups", label: "Группы и переводы", icon: Settings },
+  { id: "schedule", label: "Расписание", icon: CalendarClock },
+];
+
+const defaultSiteDraft = {
+  brand_name: "IELTS Center",
+  logo_url: "",
+  phone: "",
+  social_links: { instagram: "", facebook: "", whatsapp: "" },
+  colors: {
+    primary: "#1e3a8a",
+    secondary: "#4b5563",
+    accent: "#dc2626",
+    background: "#ffffff",
+    surface: "#f9fafb",
+    text_main: "#111827",
+  },
+  content: {
+    hero_title: { ru: "", en: "", kk: "" },
+    hero_subtitle: { ru: "", en: "", kk: "" },
+    about_title: { ru: "", en: "", kk: "" },
+    about_text: { ru: "", en: "", kk: "" },
+    why_choose_title: { ru: "", en: "", kk: "" },
+    consultation_title: { ru: "", en: "", kk: "" },
+    offer_title: { ru: "", en: "", kk: "" },
+  },
+};
+
+const defaultScheduleConfig = {
+  start_time: "08:00",
+  end_time: "17:00",
+  lunch_start: "12:00",
+  lunch_end: "13:00",
+  lesson_duration: 120,
+  break_duration: 0,
+};
+
+const DAYS = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
+
+const applyTheme = (colors) => {
+  if (!colors) return;
+  const root = document.documentElement;
+  root.style.setProperty("--primary", colors.primary);
+  root.style.setProperty("--secondary", colors.secondary);
+  root.style.setProperty("--accent", colors.accent);
+  root.style.setProperty("--background", colors.background);
+  root.style.setProperty("--surface", colors.surface);
+  root.style.setProperty("--text-main", colors.text_main);
+};
+
+export default function AdminDashboardPage() {
+  const { user, token, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [newBranch, setNewBranch] = useState({ name: "", location: "" });
+
+  const [siteDraft, setSiteDraft] = useState(defaultSiteDraft);
+  const [leads, setLeads] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [classrooms, setClassrooms] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleConfig, setScheduleConfig] = useState(defaultScheduleConfig);
+  const [autoSlots, setAutoSlots] = useState([]);
+
+  const [teacherForm, setTeacherForm] = useState({ name: "", phone: "" });
+  const [classroomForm, setClassroomForm] = useState({ name: "", capacity: "" });
+  const [groupForm, setGroupForm] = useState({ prefix: "ielts", index: 1, year: 2025, is_individual: false });
+  const [assignForm, setAssignForm] = useState({ student_id: "", group_id: "" });
+  const [transferForm, setTransferForm] = useState({ student_id: "", from_group_id: "", to_group_id: "" });
+  const [scheduleForm, setScheduleForm] = useState({ day: "ПН", start: "08:00", end: "10:00", group_id: "", teacher_id: "", classroom_id: "" });
+  const [conflictState, setConflictState] = useState(null);
+
+  const [credentialsDraft, setCredentialsDraft] = useState({});
+
+  const config = useMemo(() => authConfig(token), [token]);
+
+  if (!user || !["superadmin", "admin"].includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const loadBranches = async () => {
+    const response = await api.get("/api/admin/branches", config);
+    setBranches(response.data);
+    const persisted = localStorage.getItem("admin_branch_id");
+    const allowedPersisted = response.data.find((branch) => branch.id === persisted)?.id;
+    const defaultBranch = user?.branch_id || allowedPersisted || response.data[0]?.id || "";
+    setSelectedBranchId(defaultBranch);
+  };
+
+  const withBranch = () => ({ params: { branch_id: selectedBranchId }, ...config });
+
+  const loadBranchData = async () => {
+    if (!selectedBranchId) return;
+    const requests = [
+      api.get("/api/admin/site-settings", withBranch()),
+      api.get("/api/admin/leads", withBranch()),
+      api.get("/api/admin/students", withBranch()),
+      api.get("/api/admin/teachers", withBranch()),
+      api.get("/api/admin/classrooms", withBranch()),
+      api.get("/api/admin/groups", withBranch()),
+      api.get("/api/admin/schedules", withBranch()),
+      api.get("/api/admin/schedule-settings", withBranch()),
+    ];
+
+    const [site, leadsRes, studentsRes, teachersRes, classRes, groupsRes, schedulesRes, configRes] = await Promise.all(requests);
+    setSiteDraft(site.data);
+    applyTheme(site.data.colors);
+    setLeads(leadsRes.data);
+    setStudents(studentsRes.data);
+    setTeachers(teachersRes.data);
+    setClassrooms(classRes.data);
+    setGroups(groupsRes.data);
+    setSchedules(schedulesRes.data);
+    setScheduleConfig(configRes.data);
+  };
+
+  useEffect(() => {
+    loadBranches().catch(() => toast.error("Не удалось загрузить филиалы"));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBranchId) return;
+    localStorage.setItem("admin_branch_id", selectedBranchId);
+    loadBranchData().catch(() => toast.error("Не удалось загрузить данные филиала"));
+  }, [selectedBranchId]);
+
+  const createBranch = async () => {
+    if (!newBranch.name || !newBranch.location) {
+      toast.error("Заполните название и местоположение");
+      return;
+    }
+    try {
+      await api.post("/api/admin/branches", newBranch, config);
+      toast.success("Филиал создан");
+      setNewBranch({ name: "", location: "" });
+      await loadBranches();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка создания филиала");
+    }
+  };
+
+  const saveSiteSettings = async () => {
+    try {
+      await api.put("/api/admin/site-settings", {
+        brand_name: siteDraft.brand_name,
+        logo_url: siteDraft.logo_url,
+        phone: siteDraft.phone,
+        social_links: siteDraft.social_links,
+        colors: siteDraft.colors,
+        content: siteDraft.content,
+      }, withBranch());
+      applyTheme(siteDraft.colors);
+      toast.success("Изменения сайта сохранены");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Не удалось сохранить");
+    }
+  };
+
+  const approveLead = async (leadId) => {
+    try {
+      const response = await api.post(`/api/admin/leads/${leadId}/approve`, {}, withBranch());
+      toast.success(`Логин: ${response.data.username}, пароль: ${response.data.password}`);
+      await loadBranchData();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка подтверждения");
+    }
+  };
+
+  const saveStudentCredentials = async (studentId) => {
+    const payload = credentialsDraft[studentId];
+    if (!payload?.username || !payload?.password) {
+      toast.error("Введите логин и пароль");
+      return;
+    }
+    try {
+      await api.put(`/api/admin/students/${studentId}/credentials`, payload, withBranch());
+      toast.success("Данные входа обновлены");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка обновления");
+    }
+  };
+
+  const addTeacher = async () => {
+    if (!teacherForm.name || !teacherForm.phone) {
+      toast.error("Заполните данные преподавателя");
+      return;
+    }
+    try {
+      await api.post("/api/admin/teachers", teacherForm, withBranch());
+      setTeacherForm({ name: "", phone: "" });
+      await loadBranchData();
+      toast.success("Преподаватель добавлен");
+    } catch {
+      toast.error("Ошибка добавления преподавателя");
+    }
+  };
+
+  const removeTeacher = async (teacherId) => {
+    try {
+      await api.delete(`/api/admin/teachers/${teacherId}`, withBranch());
+      await loadBranchData();
+      toast.success("Преподаватель удалён");
+    } catch {
+      toast.error("Ошибка удаления преподавателя");
+    }
+  };
+
+  const addClassroom = async () => {
+    if (!classroomForm.name) {
+      toast.error("Введите номер или название класса");
+      return;
+    }
+    try {
+      await api.post("/api/admin/classrooms", {
+        name: classroomForm.name,
+        capacity: classroomForm.capacity ? Number(classroomForm.capacity) : null,
+      }, withBranch());
+      setClassroomForm({ name: "", capacity: "" });
+      await loadBranchData();
+      toast.success("Класс добавлен");
+    } catch {
+      toast.error("Ошибка добавления класса");
+    }
+  };
+
+  const removeClassroom = async (classroomId) => {
+    try {
+      await api.delete(`/api/admin/classrooms/${classroomId}`, withBranch());
+      await loadBranchData();
+      toast.success("Класс удалён");
+    } catch {
+      toast.error("Ошибка удаления класса");
+    }
+  };
+
+  const addGroup = async () => {
+    try {
+      await api.post("/api/admin/groups", {
+        prefix: groupForm.prefix,
+        index: Number(groupForm.index),
+        year: Number(groupForm.year),
+        is_individual: groupForm.is_individual,
+      }, withBranch());
+      await loadBranchData();
+      toast.success("Группа создана");
+    } catch {
+      toast.error("Ошибка создания группы");
+    }
+  };
+
+  const removeGroup = async (groupId) => {
+    try {
+      await api.delete(`/api/admin/groups/${groupId}`, withBranch());
+      await loadBranchData();
+      toast.success("Группа удалена");
+    } catch {
+      toast.error("Ошибка удаления группы");
+    }
+  };
+
+  const assignStudent = async () => {
+    if (!assignForm.student_id || !assignForm.group_id) {
+      toast.error("Выберите ученика и группу");
+      return;
+    }
+    try {
+      await api.post(`/api/admin/groups/${assignForm.group_id}/students/${assignForm.student_id}`, {}, withBranch());
+      await loadBranchData();
+      toast.success("Ученик добавлен в группу");
+    } catch {
+      toast.error("Ошибка привязки ученика");
+    }
+  };
+
+  const transferStudent = async () => {
+    if (!transferForm.student_id || !transferForm.from_group_id || !transferForm.to_group_id) {
+      toast.error("Заполните перевод полностью");
+      return;
+    }
+    try {
+      await api.post(`/api/admin/students/${transferForm.student_id}/transfer`, {
+        from_group_id: transferForm.from_group_id,
+        to_group_id: transferForm.to_group_id,
+      }, withBranch());
+      await loadBranchData();
+      toast.success("Перевод выполнен");
+    } catch {
+      toast.error("Ошибка перевода");
+    }
+  };
+
+  const saveScheduleConfig = async () => {
+    try {
+      await api.put("/api/admin/schedule-settings", {
+        ...scheduleConfig,
+        lesson_duration: Number(scheduleConfig.lesson_duration),
+        break_duration: Number(scheduleConfig.break_duration),
+      }, withBranch());
+      toast.success("Настройки расписания сохранены");
+    } catch {
+      toast.error("Ошибка сохранения настроек");
+    }
+  };
+
+  const generateAutoSlots = async () => {
+    try {
+      const response = await api.post("/api/admin/schedule/auto-slots", {
+        ...scheduleConfig,
+        lesson_duration: Number(scheduleConfig.lesson_duration),
+        break_duration: Number(scheduleConfig.break_duration),
+      }, withBranch());
+      setAutoSlots(response.data.slots);
+      toast.success("Слоты рассчитаны");
+    } catch {
+      toast.error("Ошибка расчёта слотов");
+    }
+  };
+
+  const checkConflicts = async () => {
+    if (!scheduleForm.teacher_id || !scheduleForm.classroom_id) {
+      toast.error("Выберите преподавателя и класс");
+      return;
+    }
+    try {
+      const response = await api.get("/api/admin/schedules/conflicts", {
+        params: {
+          branch_id: selectedBranchId,
+          day: scheduleForm.day,
+          start: scheduleForm.start,
+          end: scheduleForm.end,
+          teacher_id: scheduleForm.teacher_id,
+          classroom_id: scheduleForm.classroom_id,
+        },
+        headers: config.headers,
+      });
+      setConflictState(response.data);
+      if (response.data.has_conflict) {
+        toast.error("Конфликт найден");
+      } else {
+        toast.success("Конфликтов нет");
+      }
+    } catch {
+      toast.error("Ошибка проверки конфликтов");
+    }
+  };
+
+  const createScheduleEntry = async () => {
+    if (!scheduleForm.group_id || !scheduleForm.teacher_id || !scheduleForm.classroom_id) {
+      toast.error("Заполните все поля расписания");
+      return;
+    }
+    try {
+      await api.post("/api/admin/schedules", scheduleForm, withBranch());
+      setConflictState(null);
+      await loadBranchData();
+      toast.success("Расписание сохранено");
+    } catch (error) {
+      const details = error?.response?.data?.detail;
+      if (details?.has_conflict) {
+        setConflictState(details);
+      }
+      toast.error("Не удалось сохранить расписание");
+    }
+  };
+
+  const removeSchedule = async (scheduleId) => {
+    try {
+      await api.delete(`/api/admin/schedules/${scheduleId}`, withBranch());
+      await loadBranchData();
+      toast.success("Запись удалена");
+    } catch {
+      toast.error("Ошибка удаления записи");
+    }
+  };
+
+  const overviewStats = {
+    leads: leads.filter((item) => item.status === "pending").length,
+    students: students.length,
+    teachers: teachers.length,
+    groups: groups.length,
+    schedules: schedules.length,
+  };
+
+  return (
+    <div className="dashboard-page" data-testid="admin-dashboard-page">
+      <aside className="sidebar" data-testid="admin-sidebar">
+        <div className="sidebar-brand" data-testid="admin-sidebar-brand">
+          <img src={siteDraft.logo_url} alt="logo" className="logo" data-testid="admin-sidebar-logo" />
+          <div>
+            <strong data-testid="admin-sidebar-brand-name">{siteDraft.brand_name || "IELTS Center"}</strong>
+            <p data-testid="admin-sidebar-user-role">{user.role}</p>
+          </div>
+        </div>
+
+        <div className="sidebar-tabs" data-testid="admin-tab-list">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                className={activeTab === tab.id ? "tab-btn active" : "tab-btn"}
+                onClick={() => setActiveTab(tab.id)}
+                data-testid={`admin-tab-button-${tab.id}`}
+              >
+                <Icon size={16} /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <button onClick={logout} className="danger-btn" data-testid="admin-logout-button">
+          <LogOut size={16} /> Выйти
+        </button>
+      </aside>
+
+      <main className="dashboard-content" data-testid="admin-main-content">
+        <div className="dashboard-topbar" data-testid="admin-topbar">
+          <div>
+            <h1 data-testid="admin-topbar-title">Админ панель</h1>
+            <p data-testid="admin-topbar-subtitle">Мультифилиалы, сайт, ученики, группы, расписание</p>
+          </div>
+
+          <div className="topbar-controls" data-testid="admin-topbar-controls">
+            <select
+              value={selectedBranchId}
+              onChange={(event) => setSelectedBranchId(event.target.value)}
+              data-testid="admin-branch-selector"
+            >
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name} — {branch.location}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {user.role === "superadmin" && (
+          <section className="card" data-testid="branch-creator-card">
+            <h2 data-testid="branch-creator-title">Создать новый филиал (новая БД)</h2>
+            <div className="inline-form">
+              <input
+                placeholder="Название филиала"
+                value={newBranch.name}
+                onChange={(event) => setNewBranch((prev) => ({ ...prev, name: event.target.value }))}
+                data-testid="branch-create-name-input"
+              />
+              <input
+                placeholder="Местоположение"
+                value={newBranch.location}
+                onChange={(event) => setNewBranch((prev) => ({ ...prev, location: event.target.value }))}
+                data-testid="branch-create-location-input"
+              />
+              <button className="primary-btn" onClick={createBranch} data-testid="branch-create-submit-button">
+                Создать филиал
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "overview" && (
+          <section className="card" data-testid="overview-tab-content">
+            <h2 data-testid="overview-title">Обзор филиала</h2>
+            <div className="metrics-grid">
+              <div className="metric-card" data-testid="overview-pending-leads-card">
+                <strong>{overviewStats.leads}</strong>
+                <span>Новые заявки</span>
+              </div>
+              <div className="metric-card" data-testid="overview-students-card">
+                <strong>{overviewStats.students}</strong>
+                <span>Ученики</span>
+              </div>
+              <div className="metric-card" data-testid="overview-teachers-card">
+                <strong>{overviewStats.teachers}</strong>
+                <span>Преподаватели</span>
+              </div>
+              <div className="metric-card" data-testid="overview-groups-card">
+                <strong>{overviewStats.groups}</strong>
+                <span>Группы</span>
+              </div>
+              <div className="metric-card" data-testid="overview-schedules-card">
+                <strong>{overviewStats.schedules}</strong>
+                <span>Занятия</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "site" && (
+          <section className="card" data-testid="site-editor-tab-content">
+            <h2 data-testid="site-editor-title">Редактирование сайта</h2>
+
+            <div className="form-grid">
+              <div>
+                <label data-testid="site-editor-brand-name-label">Название бренда</label>
+                <input
+                  value={siteDraft.brand_name || ""}
+                  onChange={(event) => setSiteDraft((prev) => ({ ...prev, brand_name: event.target.value }))}
+                  data-testid="site-editor-brand-name-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-logo-label">URL логотипа</label>
+                <input
+                  value={siteDraft.logo_url || ""}
+                  onChange={(event) => setSiteDraft((prev) => ({ ...prev, logo_url: event.target.value }))}
+                  data-testid="site-editor-logo-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-phone-label">Телефон</label>
+                <input
+                  value={siteDraft.phone || ""}
+                  onChange={(event) => setSiteDraft((prev) => ({ ...prev, phone: event.target.value }))}
+                  data-testid="site-editor-phone-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-instagram-label">Instagram</label>
+                <input
+                  value={siteDraft.social_links?.instagram || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, instagram: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-instagram-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-facebook-label">Facebook</label>
+                <input
+                  value={siteDraft.social_links?.facebook || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, facebook: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-facebook-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-whatsapp-label">WhatsApp</label>
+                <input
+                  value={siteDraft.social_links?.whatsapp || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, whatsapp: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-whatsapp-input"
+                />
+              </div>
+            </div>
+
+            <h3 data-testid="site-editor-colors-title">Глобальные цвета</h3>
+            <div className="color-grid" data-testid="site-editor-color-grid">
+              {Object.entries(siteDraft.colors || {}).map(([key, value]) => (
+                <label key={key} data-testid={`site-editor-color-${key}`}>
+                  <span>{key}</span>
+                  <input
+                    type="color"
+                    value={value}
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        colors: { ...prev.colors, [key]: event.target.value },
+                      }))
+                    }
+                    data-testid={`site-editor-color-picker-${key}`}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <h3 data-testid="site-editor-translations-title">Тексты RU / EN / KK</h3>
+            <div className="translations-grid" data-testid="site-editor-translations-grid">
+              {Object.keys(siteDraft.content || {}).map((contentKey) => (
+                <div key={contentKey} className="translation-card" data-testid={`site-editor-content-${contentKey}`}>
+                  <strong>{contentKey}</strong>
+                  {["ru", "en", "kk"].map((langCode) => (
+                    <textarea
+                      key={`${contentKey}-${langCode}`}
+                      placeholder={`${contentKey} (${langCode})`}
+                      value={siteDraft.content?.[contentKey]?.[langCode] || ""}
+                      onChange={(event) =>
+                        setSiteDraft((prev) => ({
+                          ...prev,
+                          content: {
+                            ...prev.content,
+                            [contentKey]: {
+                              ...prev.content[contentKey],
+                              [langCode]: event.target.value,
+                            },
+                          },
+                        }))
+                      }
+                      data-testid={`site-editor-content-${contentKey}-${langCode}`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <button className="primary-btn" onClick={saveSiteSettings} data-testid="site-editor-save-button">
+              Сохранить изменения сайта
+            </button>
+          </section>
+        )}
+
+        {activeTab === "leads" && (
+          <section className="card" data-testid="leads-tab-content">
+            <h2 data-testid="leads-title">Заявки с сайта</h2>
+            <div className="table-like" data-testid="leads-table">
+              {leads.map((lead) => (
+                <div key={lead.id} className="row" data-testid={`lead-row-${lead.id}`}>
+                  <div data-testid={`lead-name-${lead.id}`}>{lead.full_name}</div>
+                  <div data-testid={`lead-phone-${lead.id}`}>{lead.phone}</div>
+                  <div data-testid={`lead-status-${lead.id}`}>{lead.status}</div>
+                  {lead.status === "pending" ? (
+                    <button className="primary-btn" onClick={() => approveLead(lead.id)} data-testid={`lead-approve-button-${lead.id}`}>
+                      Подтвердить
+                    </button>
+                  ) : (
+                    <span data-testid={`lead-approved-mark-${lead.id}`}>Подтверждено</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "students" && (
+          <section className="card" data-testid="students-tab-content">
+            <h2 data-testid="students-title">Ученики и авторизация</h2>
+            <div className="table-like" data-testid="students-table">
+              {students.map((student) => (
+                <div key={student.id} className="row student-row" data-testid={`student-row-${student.id}`}>
+                  <div>
+                    <strong data-testid={`student-name-${student.id}`}>{student.full_name}</strong>
+                    <p data-testid={`student-phone-${student.id}`}>{student.phone}</p>
+                    <small data-testid={`student-groups-${student.id}`}>{student.groups?.join(", ") || "Без группы"}</small>
+                  </div>
+
+                  <div className="inline-form compact">
+                    <input
+                      placeholder="Новый логин"
+                      value={credentialsDraft[student.id]?.username || ""}
+                      onChange={(event) =>
+                        setCredentialsDraft((prev) => ({
+                          ...prev,
+                          [student.id]: { ...prev[student.id], username: event.target.value },
+                        }))
+                      }
+                      data-testid={`student-username-input-${student.id}`}
+                    />
+                    <input
+                      placeholder="Новый пароль"
+                      value={credentialsDraft[student.id]?.password || ""}
+                      onChange={(event) =>
+                        setCredentialsDraft((prev) => ({
+                          ...prev,
+                          [student.id]: { ...prev[student.id], password: event.target.value },
+                        }))
+                      }
+                      data-testid={`student-password-input-${student.id}`}
+                    />
+                    <button
+                      className="primary-btn"
+                      onClick={() => saveStudentCredentials(student.id)}
+                      data-testid={`student-save-credentials-button-${student.id}`}
+                    >
+                      Сменить
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "resources" && (
+          <section className="card" data-testid="resources-tab-content">
+            <h2 data-testid="resources-title">Преподаватели и классы</h2>
+
+            <div className="split-grid">
+              <div className="form-panel" data-testid="teacher-panel">
+                <h3 data-testid="teacher-panel-title">Преподаватели</h3>
+                <div className="inline-form">
+                  <input
+                    placeholder="Имя преподавателя"
+                    value={teacherForm.name}
+                    onChange={(event) => setTeacherForm((prev) => ({ ...prev, name: event.target.value }))}
+                    data-testid="teacher-name-input"
+                  />
+                  <input
+                    placeholder="Телефон"
+                    value={teacherForm.phone}
+                    onChange={(event) => setTeacherForm((prev) => ({ ...prev, phone: event.target.value }))}
+                    data-testid="teacher-phone-input"
+                  />
+                  <button className="primary-btn" onClick={addTeacher} data-testid="teacher-add-button">
+                    Добавить
+                  </button>
+                </div>
+
+                <div className="simple-list" data-testid="teacher-list">
+                  {teachers.map((teacher) => (
+                    <div key={teacher.id} className="row" data-testid={`teacher-row-${teacher.id}`}>
+                      <span data-testid={`teacher-name-${teacher.id}`}>{teacher.name}</span>
+                      <button className="danger-btn" onClick={() => removeTeacher(teacher.id)} data-testid={`teacher-delete-button-${teacher.id}`}>
+                        Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-panel" data-testid="classroom-panel">
+                <h3 data-testid="classroom-panel-title">Классы</h3>
+                <div className="inline-form">
+                  <input
+                    placeholder="Номер класса"
+                    value={classroomForm.name}
+                    onChange={(event) => setClassroomForm((prev) => ({ ...prev, name: event.target.value }))}
+                    data-testid="classroom-name-input"
+                  />
+                  <input
+                    placeholder="Вместимость"
+                    value={classroomForm.capacity}
+                    onChange={(event) => setClassroomForm((prev) => ({ ...prev, capacity: event.target.value }))}
+                    data-testid="classroom-capacity-input"
+                  />
+                  <button className="primary-btn" onClick={addClassroom} data-testid="classroom-add-button">
+                    Добавить
+                  </button>
+                </div>
+
+                <div className="simple-list" data-testid="classroom-list">
+                  {classrooms.map((item) => (
+                    <div key={item.id} className="row" data-testid={`classroom-row-${item.id}`}>
+                      <span data-testid={`classroom-name-${item.id}`}>{item.name}</span>
+                      <button className="danger-btn" onClick={() => removeClassroom(item.id)} data-testid={`classroom-delete-button-${item.id}`}>
+                        Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "groups" && (
+          <section className="card" data-testid="groups-tab-content">
+            <h2 data-testid="groups-title">Группы, индивидуальные занятия и переводы</h2>
+
+            <div className="form-grid">
+              <input
+                placeholder="Префикс (например ielts)"
+                value={groupForm.prefix}
+                onChange={(event) => setGroupForm((prev) => ({ ...prev, prefix: event.target.value }))}
+                data-testid="group-prefix-input"
+              />
+              <input
+                type="number"
+                placeholder="Номер группы"
+                value={groupForm.index}
+                onChange={(event) => setGroupForm((prev) => ({ ...prev, index: event.target.value }))}
+                data-testid="group-index-input"
+              />
+              <input
+                type="number"
+                placeholder="Год"
+                value={groupForm.year}
+                onChange={(event) => setGroupForm((prev) => ({ ...prev, year: event.target.value }))}
+                data-testid="group-year-input"
+              />
+              <label className="checkbox-label" data-testid="group-individual-toggle-wrapper">
+                <input
+                  type="checkbox"
+                  checked={groupForm.is_individual}
+                  onChange={(event) => setGroupForm((prev) => ({ ...prev, is_individual: event.target.checked }))}
+                  data-testid="group-individual-toggle"
+                />
+                Индивидуальная группа
+              </label>
+              <button className="primary-btn" onClick={addGroup} data-testid="group-create-button">
+                Создать группу
+              </button>
+            </div>
+
+            <div className="simple-list" data-testid="group-list">
+              {groups.map((group) => (
+                <div key={group.id} className="row" data-testid={`group-row-${group.id}`}>
+                  <span data-testid={`group-name-${group.id}`}>
+                    {group.name} {group.is_individual ? "(инд.)" : ""}
+                  </span>
+                  <button className="danger-btn" onClick={() => removeGroup(group.id)} data-testid={`group-delete-button-${group.id}`}>
+                    Удалить
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <h3 data-testid="group-assign-title">Привязка ученика к группе</h3>
+            <div className="inline-form" data-testid="group-assign-form">
+              <select
+                value={assignForm.student_id}
+                onChange={(event) => setAssignForm((prev) => ({ ...prev, student_id: event.target.value }))}
+                data-testid="group-assign-student-select"
+              >
+                <option value="">Выберите ученика</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.full_name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={assignForm.group_id}
+                onChange={(event) => setAssignForm((prev) => ({ ...prev, group_id: event.target.value }))}
+                data-testid="group-assign-group-select"
+              >
+                <option value="">Выберите группу</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <button className="primary-btn" onClick={assignStudent} data-testid="group-assign-submit-button">
+                Добавить в группу
+              </button>
+            </div>
+
+            <h3 data-testid="group-transfer-title">Перевод между группами</h3>
+            <div className="inline-form" data-testid="group-transfer-form">
+              <select
+                value={transferForm.student_id}
+                onChange={(event) => setTransferForm((prev) => ({ ...prev, student_id: event.target.value }))}
+                data-testid="group-transfer-student-select"
+              >
+                <option value="">Ученик</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.full_name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={transferForm.from_group_id}
+                onChange={(event) => setTransferForm((prev) => ({ ...prev, from_group_id: event.target.value }))}
+                data-testid="group-transfer-from-select"
+              >
+                <option value="">Из группы</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={transferForm.to_group_id}
+                onChange={(event) => setTransferForm((prev) => ({ ...prev, to_group_id: event.target.value }))}
+                data-testid="group-transfer-to-select"
+              >
+                <option value="">В группу</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <button className="primary-btn" onClick={transferStudent} data-testid="group-transfer-submit-button">
+                Перевести
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "schedule" && (
+          <section className="card" data-testid="schedule-tab-content">
+            <h2 data-testid="schedule-title">Конструктор расписания</h2>
+
+            <div className="form-grid" data-testid="schedule-config-form">
+              <input
+                type="time"
+                value={scheduleConfig.start_time}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, start_time: event.target.value }))}
+                data-testid="schedule-config-start-time"
+              />
+              <input
+                type="time"
+                value={scheduleConfig.end_time}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, end_time: event.target.value }))}
+                data-testid="schedule-config-end-time"
+              />
+              <input
+                type="time"
+                value={scheduleConfig.lunch_start}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_start: event.target.value }))}
+                data-testid="schedule-config-lunch-start"
+              />
+              <input
+                type="time"
+                value={scheduleConfig.lunch_end}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_end: event.target.value }))}
+                data-testid="schedule-config-lunch-end"
+              />
+              <input
+                type="number"
+                value={scheduleConfig.lesson_duration}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lesson_duration: event.target.value }))}
+                data-testid="schedule-config-lesson-duration"
+              />
+              <input
+                type="number"
+                value={scheduleConfig.break_duration}
+                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, break_duration: event.target.value }))}
+                data-testid="schedule-config-break-duration"
+              />
+            </div>
+
+            <div className="inline-form">
+              <button className="primary-btn" onClick={saveScheduleConfig} data-testid="schedule-config-save-button">
+                Сохранить настройки
+              </button>
+              <button className="primary-btn" onClick={generateAutoSlots} data-testid="schedule-generate-slots-button">
+                Рассчитать уроки автоматически
+              </button>
+            </div>
+
+            <div className="simple-list" data-testid="auto-slots-list">
+              {autoSlots.map((slot, index) => (
+                <div key={`${slot.start}-${slot.end}`} className="row" data-testid={`auto-slot-row-${index + 1}`}>
+                  <span data-testid={`auto-slot-label-${index + 1}`}>{slot.label}</span>
+                  <span data-testid={`auto-slot-time-${index + 1}`}>
+                    {slot.start} - {slot.end}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <h3 data-testid="schedule-entry-title">Добавить занятие</h3>
+            <div className="form-grid" data-testid="schedule-entry-form">
+              <select
+                value={scheduleForm.day}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, day: event.target.value }))}
+                data-testid="schedule-entry-day-select"
+              >
+                {DAYS.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="time"
+                value={scheduleForm.start}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, start: event.target.value }))}
+                data-testid="schedule-entry-start-input"
+              />
+              <input
+                type="time"
+                value={scheduleForm.end}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, end: event.target.value }))}
+                data-testid="schedule-entry-end-input"
+              />
+              <select
+                value={scheduleForm.group_id}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, group_id: event.target.value }))}
+                data-testid="schedule-entry-group-select"
+              >
+                <option value="">Группа</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={scheduleForm.teacher_id}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, teacher_id: event.target.value }))}
+                data-testid="schedule-entry-teacher-select"
+              >
+                <option value="">Преподаватель</option>
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={scheduleForm.classroom_id}
+                onChange={(event) => setScheduleForm((prev) => ({ ...prev, classroom_id: event.target.value }))}
+                data-testid="schedule-entry-classroom-select"
+              >
+                <option value="">Класс</option>
+                {classrooms.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="inline-form">
+              <button className="primary-btn" onClick={checkConflicts} data-testid="schedule-check-conflicts-button">
+                Проверить конфликт
+              </button>
+              <button className="primary-btn" onClick={createScheduleEntry} data-testid="schedule-save-entry-button">
+                Сохранить занятие
+              </button>
+            </div>
+
+            {conflictState && (
+              <div
+                className={conflictState.has_conflict ? "conflict-box alert" : "conflict-box"}
+                data-testid="schedule-conflict-result-box"
+              >
+                <strong data-testid="schedule-conflict-status">
+                  {conflictState.has_conflict ? "Конфликт найден" : "Конфликтов нет"}
+                </strong>
+                {conflictState.has_conflict && (
+                  <ul data-testid="schedule-conflict-list">
+                    {conflictState.conflicts.map((item) => (
+                      <li key={item.id} data-testid={`schedule-conflict-item-${item.id}`}>
+                        {item.day} {item.start}-{item.end}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="table-like" data-testid="schedule-table">
+              {schedules.map((item) => (
+                <div key={item.id} className="row" data-testid={`schedule-row-${item.id}`}>
+                  <span data-testid={`schedule-day-${item.id}`}>{item.day}</span>
+                  <span data-testid={`schedule-time-${item.id}`}>
+                    {item.start} - {item.end}
+                  </span>
+                  <span data-testid={`schedule-group-${item.id}`}>{item.group_name}</span>
+                  <span data-testid={`schedule-teacher-${item.id}`}>{item.teacher_name}</span>
+                  <span data-testid={`schedule-classroom-${item.id}`}>{item.classroom_name}</span>
+                  <button className="danger-btn" onClick={() => removeSchedule(item.id)} data-testid={`schedule-delete-button-${item.id}`}>
+                    Удалить
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
