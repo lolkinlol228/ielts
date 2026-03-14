@@ -7,6 +7,7 @@ import { api, authConfig } from "../lib/api";
 
 const TABS = [
   { id: "overview", label: "Обзор", icon: ShieldCheck },
+  { id: "branches", label: "Филиалы", icon: Building2 },
   { id: "site", label: "Редактор сайта", icon: Palette },
   { id: "leads", label: "Желающие", icon: Users },
   { id: "students", label: "Ученики", icon: Users },
@@ -70,6 +71,7 @@ export default function AdminDashboardPage() {
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [newBranch, setNewBranch] = useState({ name: "", location: "" });
+  const [branchDrafts, setBranchDrafts] = useState({});
 
   const [siteDraft, setSiteDraft] = useState(defaultSiteDraft);
   const [leads, setLeads] = useState([]);
@@ -93,10 +95,13 @@ export default function AdminDashboardPage() {
   const [assignForm, setAssignForm] = useState({ student_id: "", group_id: "" });
   const [transferForm, setTransferForm] = useState({ student_id: "", from_group_id: "", to_group_id: "" });
   const [scheduleForm, setScheduleForm] = useState({ day: "ПН", start: "08:00", end: "10:00", group_id: "", teacher_id: "", classroom_id: "" });
+  const [editingScheduleId, setEditingScheduleId] = useState("");
   const [conflictState, setConflictState] = useState(null);
 
   const [credentialsDraft, setCredentialsDraft] = useState({});
   const [teacherDrafts, setTeacherDrafts] = useState({});
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  const [leadStatusFilter, setLeadStatusFilter] = useState("all");
 
   const config = useMemo(() => authConfig(token), [token]);
 
@@ -152,6 +157,17 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     const nextDrafts = {};
+    branches.forEach((branch) => {
+      nextDrafts[branch.id] = {
+        name: branch.name,
+        location: branch.location,
+      };
+    });
+    setBranchDrafts(nextDrafts);
+  }, [branches]);
+
+  useEffect(() => {
+    const nextDrafts = {};
     teachers.forEach((teacher) => {
       nextDrafts[teacher.id] = {
         name: teacher.name || "",
@@ -183,6 +199,34 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const saveBranch = async (branchId) => {
+    const payload = branchDrafts[branchId];
+    if (!payload?.name || !payload?.location) {
+      toast.error("Название и местоположение обязательны");
+      return;
+    }
+    try {
+      await api.put(`/api/admin/branches/${branchId}`, payload, config);
+      await loadBranches();
+      toast.success("Филиал обновлён");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка обновления филиала");
+    }
+  };
+
+  const removeBranch = async (branchId) => {
+    if (!window.confirm("Удалить филиал? Это удалит его БД и пользователей филиала.")) {
+      return;
+    }
+    try {
+      await api.delete(`/api/admin/branches/${branchId}`, config);
+      await loadBranches();
+      toast.success("Филиал удалён");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка удаления филиала");
+    }
+  };
+
   const saveSiteSettings = async () => {
     try {
       await api.put("/api/admin/site-settings", {
@@ -209,6 +253,16 @@ export default function AdminDashboardPage() {
       await loadBranchData();
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Ошибка подтверждения");
+    }
+  };
+
+  const rejectLead = async (leadId) => {
+    try {
+      await api.post(`/api/admin/leads/${leadId}/reject`, {}, withBranch());
+      await loadBranchData();
+      toast.success("Заявка отклонена");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка отклонения");
     }
   };
 
@@ -463,17 +517,45 @@ export default function AdminDashboardPage() {
       return;
     }
     try {
-      await api.post("/api/admin/schedules", scheduleForm, withBranch());
+      if (editingScheduleId) {
+        await api.put(`/api/admin/schedules/${editingScheduleId}`, scheduleForm, withBranch());
+      } else {
+        await api.post("/api/admin/schedules", scheduleForm, withBranch());
+      }
       setConflictState(null);
+      setEditingScheduleId("");
+      setScheduleForm({ day: "ПН", start: "08:00", end: "10:00", group_id: "", teacher_id: "", classroom_id: "" });
       await loadBranchData();
-      toast.success("Расписание сохранено");
+      toast.success(editingScheduleId ? "Расписание обновлено" : "Расписание сохранено");
     } catch (error) {
       const details = error?.response?.data?.detail;
       if (details?.has_conflict) {
         setConflictState(details);
       }
-      toast.error("Не удалось сохранить расписание");
+      toast.error(editingScheduleId ? "Не удалось обновить расписание" : "Не удалось сохранить расписание");
     }
+  };
+
+  const editSchedule = (schedule) => {
+    setEditingScheduleId(schedule.id);
+    setScheduleForm({
+      day: schedule.day,
+      start: schedule.start,
+      end: schedule.end,
+      group_id: schedule.group_id,
+      teacher_id: schedule.teacher_id,
+      classroom_id: schedule.classroom_id,
+    });
+  };
+
+  const cancelEditSchedule = () => {
+    setEditingScheduleId("");
+    setConflictState(null);
+    setScheduleForm({ day: "ПН", start: "08:00", end: "10:00", group_id: "", teacher_id: "", classroom_id: "" });
+  };
+
+  const applyAutoSlot = (slot) => {
+    setScheduleForm((prev) => ({ ...prev, start: slot.start, end: slot.end }));
   };
 
   const removeSchedule = async (scheduleId) => {
@@ -486,6 +568,51 @@ export default function AdminDashboardPage() {
     }
   };
 
+  useEffect(() => {
+    const canCheck =
+      selectedBranchId &&
+      scheduleForm.day &&
+      scheduleForm.start &&
+      scheduleForm.end &&
+      scheduleForm.teacher_id &&
+      scheduleForm.classroom_id;
+    if (!canCheck) {
+      setConflictState(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const response = await api.get("/api/admin/schedules/conflicts", {
+          params: {
+            branch_id: selectedBranchId,
+            day: scheduleForm.day,
+            start: scheduleForm.start,
+            end: scheduleForm.end,
+            teacher_id: scheduleForm.teacher_id,
+            classroom_id: scheduleForm.classroom_id,
+            schedule_id: editingScheduleId || undefined,
+          },
+          headers: config.headers,
+        });
+        setConflictState(response.data);
+      } catch {
+        setConflictState(null);
+      }
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    selectedBranchId,
+    scheduleForm.day,
+    scheduleForm.start,
+    scheduleForm.end,
+    scheduleForm.teacher_id,
+    scheduleForm.classroom_id,
+    editingScheduleId,
+    config.headers,
+  ]);
+
   const overviewStats = {
     leads: leads.filter((item) => item.status === "pending").length,
     students: students.length,
@@ -493,6 +620,13 @@ export default function AdminDashboardPage() {
     groups: groups.length,
     schedules: schedules.length,
   };
+
+  const filteredLeads = leads.filter((lead) => {
+    const statusMatch = leadStatusFilter === "all" ? true : lead.status === leadStatusFilter;
+    const query = leadSearchQuery.trim().toLowerCase();
+    const queryMatch = !query || lead.full_name.toLowerCase().includes(query) || lead.phone.toLowerCase().includes(query);
+    return statusMatch && queryMatch;
+  });
 
   return (
     <div className="dashboard-page" data-testid="admin-dashboard-page">
@@ -548,10 +682,10 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {user.role === "superadmin" && (
-          <section className="card" data-testid="branch-creator-card">
-            <h2 data-testid="branch-creator-title">Создать новый филиал (новая БД)</h2>
-            <div className="inline-form">
+        {activeTab === "branches" && user.role === "superadmin" && (
+          <section className="card" data-testid="branches-tab-content">
+            <h2 data-testid="branch-creator-title">Управление филиалами</h2>
+            <div className="inline-form" data-testid="branch-creator-card">
               <input
                 placeholder="Название филиала"
                 value={newBranch.name}
@@ -567,6 +701,47 @@ export default function AdminDashboardPage() {
               <button className="primary-btn" onClick={createBranch} data-testid="branch-create-submit-button">
                 Создать филиал
               </button>
+            </div>
+
+            <div className="table-like" data-testid="branch-management-list">
+              {branches.map((branch) => (
+                <div key={branch.id} className="row" data-testid={`branch-management-row-${branch.id}`}>
+                  <input
+                    value={branchDrafts[branch.id]?.name || ""}
+                    onChange={(event) =>
+                      setBranchDrafts((prev) => ({
+                        ...prev,
+                        [branch.id]: { ...prev[branch.id], name: event.target.value },
+                      }))
+                    }
+                    data-testid={`branch-management-name-${branch.id}`}
+                  />
+                  <input
+                    value={branchDrafts[branch.id]?.location || ""}
+                    onChange={(event) =>
+                      setBranchDrafts((prev) => ({
+                        ...prev,
+                        [branch.id]: { ...prev[branch.id], location: event.target.value },
+                      }))
+                    }
+                    data-testid={`branch-management-location-${branch.id}`}
+                  />
+                  <button
+                    className="primary-btn"
+                    onClick={() => saveBranch(branch.id)}
+                    data-testid={`branch-management-save-${branch.id}`}
+                  >
+                    Сохранить
+                  </button>
+                  <button
+                    className="danger-btn"
+                    onClick={() => removeBranch(branch.id)}
+                    data-testid={`branch-management-delete-${branch.id}`}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -892,21 +1067,49 @@ export default function AdminDashboardPage() {
         {activeTab === "leads" && (
           <section className="card" data-testid="leads-tab-content">
             <h2 data-testid="leads-title">Заявки с сайта</h2>
+
+            <div className="inline-form" data-testid="leads-controls-row">
+              <input
+                placeholder="Поиск по имени или телефону"
+                value={leadSearchQuery}
+                onChange={(event) => setLeadSearchQuery(event.target.value)}
+                data-testid="leads-search-input"
+              />
+              <select
+                value={leadStatusFilter}
+                onChange={(event) => setLeadStatusFilter(event.target.value)}
+                data-testid="leads-status-filter-select"
+              >
+                <option value="all">Все статусы</option>
+                <option value="pending">Ожидают</option>
+                <option value="approved">Подтверждены</option>
+                <option value="rejected">Отклонены</option>
+              </select>
+            </div>
+
             <div className="table-like" data-testid="leads-table">
-              {leads.map((lead) => (
+              {filteredLeads.map((lead) => (
                 <div key={lead.id} className="row" data-testid={`lead-row-${lead.id}`}>
                   <div data-testid={`lead-name-${lead.id}`}>{lead.full_name}</div>
                   <div data-testid={`lead-phone-${lead.id}`}>{lead.phone}</div>
                   <div data-testid={`lead-status-${lead.id}`}>{lead.status}</div>
                   {lead.status === "pending" ? (
-                    <button className="primary-btn" onClick={() => approveLead(lead.id)} data-testid={`lead-approve-button-${lead.id}`}>
-                      Подтвердить
-                    </button>
-                  ) : (
+                    <div className="inline-form compact" data-testid={`lead-actions-${lead.id}`}>
+                      <button className="primary-btn" onClick={() => approveLead(lead.id)} data-testid={`lead-approve-button-${lead.id}`}>
+                        Подтвердить
+                      </button>
+                      <button className="danger-btn" onClick={() => rejectLead(lead.id)} data-testid={`lead-reject-button-${lead.id}`}>
+                        Отклонить
+                      </button>
+                    </div>
+                  ) : lead.status === "approved" ? (
                     <span data-testid={`lead-approved-mark-${lead.id}`}>Подтверждено</span>
+                  ) : (
+                    <span data-testid={`lead-rejected-mark-${lead.id}`}>Отклонено</span>
                   )}
                 </div>
               ))}
+              {filteredLeads.length === 0 && <div data-testid="leads-empty-state">Заявки не найдены</div>}
             </div>
           </section>
         )}
@@ -1278,42 +1481,60 @@ export default function AdminDashboardPage() {
             <h2 data-testid="schedule-title">Конструктор расписания</h2>
 
             <div className="form-grid" data-testid="schedule-config-form">
-              <input
-                type="time"
-                value={scheduleConfig.start_time}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, start_time: event.target.value }))}
-                data-testid="schedule-config-start-time"
-              />
-              <input
-                type="time"
-                value={scheduleConfig.end_time}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, end_time: event.target.value }))}
-                data-testid="schedule-config-end-time"
-              />
-              <input
-                type="time"
-                value={scheduleConfig.lunch_start}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_start: event.target.value }))}
-                data-testid="schedule-config-lunch-start"
-              />
-              <input
-                type="time"
-                value={scheduleConfig.lunch_end}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_end: event.target.value }))}
-                data-testid="schedule-config-lunch-end"
-              />
-              <input
-                type="number"
-                value={scheduleConfig.lesson_duration}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lesson_duration: event.target.value }))}
-                data-testid="schedule-config-lesson-duration"
-              />
-              <input
-                type="number"
-                value={scheduleConfig.break_duration}
-                onChange={(event) => setScheduleConfig((prev) => ({ ...prev, break_duration: event.target.value }))}
-                data-testid="schedule-config-break-duration"
-              />
+              <label data-testid="schedule-config-start-label">
+                Начало занятий
+                <input
+                  type="time"
+                  value={scheduleConfig.start_time}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, start_time: event.target.value }))}
+                  data-testid="schedule-config-start-time"
+                />
+              </label>
+              <label data-testid="schedule-config-end-label">
+                Конец занятий
+                <input
+                  type="time"
+                  value={scheduleConfig.end_time}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, end_time: event.target.value }))}
+                  data-testid="schedule-config-end-time"
+                />
+              </label>
+              <label data-testid="schedule-config-lunch-start-label">
+                Обед с
+                <input
+                  type="time"
+                  value={scheduleConfig.lunch_start}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_start: event.target.value }))}
+                  data-testid="schedule-config-lunch-start"
+                />
+              </label>
+              <label data-testid="schedule-config-lunch-end-label">
+                Обед до
+                <input
+                  type="time"
+                  value={scheduleConfig.lunch_end}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lunch_end: event.target.value }))}
+                  data-testid="schedule-config-lunch-end"
+                />
+              </label>
+              <label data-testid="schedule-config-lesson-duration-label">
+                Длительность урока (мин)
+                <input
+                  type="number"
+                  value={scheduleConfig.lesson_duration}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, lesson_duration: event.target.value }))}
+                  data-testid="schedule-config-lesson-duration"
+                />
+              </label>
+              <label data-testid="schedule-config-break-duration-label">
+                Перемена (мин, можно 0)
+                <input
+                  type="number"
+                  value={scheduleConfig.break_duration}
+                  onChange={(event) => setScheduleConfig((prev) => ({ ...prev, break_duration: event.target.value }))}
+                  data-testid="schedule-config-break-duration"
+                />
+              </label>
             </div>
 
             <div className="inline-form">
@@ -1332,6 +1553,13 @@ export default function AdminDashboardPage() {
                   <span data-testid={`auto-slot-time-${index + 1}`}>
                     {slot.start} - {slot.end}
                   </span>
+                  <button
+                    className="primary-btn"
+                    onClick={() => applyAutoSlot(slot)}
+                    data-testid={`auto-slot-apply-${index + 1}`}
+                  >
+                    Использовать
+                  </button>
                 </div>
               ))}
             </div>
@@ -1404,8 +1632,13 @@ export default function AdminDashboardPage() {
                 Проверить конфликт
               </button>
               <button className="primary-btn" onClick={createScheduleEntry} data-testid="schedule-save-entry-button">
-                Сохранить занятие
+                {editingScheduleId ? "Обновить занятие" : "Сохранить занятие"}
               </button>
+              {editingScheduleId && (
+                <button className="danger-btn" onClick={cancelEditSchedule} data-testid="schedule-cancel-edit-button">
+                  Отменить редактирование
+                </button>
+              )}
             </div>
 
             {conflictState && (
@@ -1428,6 +1661,21 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
+            <div className="inline-form compact" data-testid="schedule-live-availability-row">
+              <div
+                className={conflictState?.teacher_busy ? "status-pill status-danger" : "status-pill status-ok"}
+                data-testid="schedule-teacher-availability-status"
+              >
+                Преподаватель: {conflictState?.teacher_busy ? "занят" : "свободен"}
+              </div>
+              <div
+                className={conflictState?.classroom_busy ? "status-pill status-danger" : "status-pill status-ok"}
+                data-testid="schedule-classroom-availability-status"
+              >
+                Класс: {conflictState?.classroom_busy ? "занят" : "свободен"}
+              </div>
+            </div>
+
             <div className="table-like" data-testid="schedule-table">
               {schedules.map((item) => (
                 <div key={item.id} className="row" data-testid={`schedule-row-${item.id}`}>
@@ -1438,6 +1686,9 @@ export default function AdminDashboardPage() {
                   <span data-testid={`schedule-group-${item.id}`}>{item.group_name}</span>
                   <span data-testid={`schedule-teacher-${item.id}`}>{item.teacher_name}</span>
                   <span data-testid={`schedule-classroom-${item.id}`}>{item.classroom_name}</span>
+                  <button className="primary-btn" onClick={() => editSchedule(item)} data-testid={`schedule-edit-button-${item.id}`}>
+                    Редактировать
+                  </button>
                   <button className="danger-btn" onClick={() => removeSchedule(item.id)} data-testid={`schedule-delete-button-${item.id}`}>
                     Удалить
                   </button>

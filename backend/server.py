@@ -250,6 +250,11 @@ class BranchCreate(BaseModel):
     location: str
 
 
+class BranchUpdate(BaseModel):
+    name: str
+    location: str
+
+
 class SiteSettingsUpdate(BaseModel):
     brand_name: Optional[str] = None
     logo_url: Optional[str] = None
@@ -531,6 +536,45 @@ async def admin_branches(user: Dict[str, Any] = Depends(require_roles("superadmi
     return sorted(branches, key=lambda item: item["name"])
 
 
+@app.put("/api/admin/branches/{branch_id}")
+async def update_branch(
+    branch_id: str,
+    payload: BranchUpdate,
+    user: Dict[str, Any] = Depends(require_roles("superadmin")),
+) -> Dict[str, Any]:
+    existing = await master_db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Филиал не найден")
+
+    update_doc = {
+        "name": payload.name.strip(),
+        "location": payload.location.strip(),
+        "updated_at": now_iso(),
+    }
+    await master_db.branches.update_one({"id": branch_id}, {"$set": update_doc})
+    updated = await master_db.branches.find_one({"id": branch_id}, {"_id": 0})
+    return sanitize(updated) or {**existing, **update_doc}
+
+
+@app.delete("/api/admin/branches/{branch_id}")
+async def delete_branch(
+    branch_id: str,
+    user: Dict[str, Any] = Depends(require_roles("superadmin")),
+) -> Dict[str, str]:
+    branch = await master_db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Филиал не найден")
+
+    branch_count = await master_db.branches.count_documents({})
+    if branch_count <= 1:
+        raise HTTPException(status_code=400, detail="Нельзя удалить последний филиал")
+
+    await master_db.users.delete_many({"branch_id": branch_id})
+    await master_db.branches.delete_one({"id": branch_id})
+    await client.drop_database(branch["db_name"])
+    return {"message": "Филиал удалён"}
+
+
 @app.post("/api/admin/branches")
 async def create_branch(
     payload: BranchCreate,
@@ -605,6 +649,7 @@ async def update_site_settings(
 async def list_leads(
     branch_id: str = Query(...),
     status_filter: Optional[str] = Query(None),
+    search_query: Optional[str] = Query(None),
     user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
 ) -> List[Dict[str, Any]]:
     assert_branch_access(user, branch_id)
@@ -612,6 +657,8 @@ async def list_leads(
     query: Dict[str, Any] = {}
     if status_filter:
         query["status"] = status_filter
+    if search_query:
+        query["full_name"] = {"$regex": re.escape(search_query.strip()), "$options": "i"}
     leads = await branch_db.leads.find(query, {"_id": 0}).to_list(length=1000)
     return sorted(leads, key=lambda x: x["created_at"], reverse=True)
 
@@ -663,6 +710,27 @@ async def approve_lead(
         {"$set": {"status": "approved", "student_id": student_id, "approved_at": now_iso()}},
     )
     return {"message": "Заявка подтверждена", "student_id": student_id, "username": username, "password": password}
+
+
+@app.post("/api/admin/leads/{lead_id}/reject")
+async def reject_lead(
+    lead_id: str,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    lead = await branch_db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    if lead.get("status") == "approved":
+        raise HTTPException(status_code=400, detail="Подтвержденную заявку нельзя отклонить")
+
+    await branch_db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {"status": "rejected", "rejected_at": now_iso()}},
+    )
+    return {"message": "Заявка отклонена"}
 
 
 @app.get("/api/admin/students")
@@ -1139,6 +1207,48 @@ async def delete_schedule(
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Расписание не найдено")
     return {"message": "Запись удалена"}
+
+
+@app.put("/api/admin/schedules/{schedule_id}")
+async def update_schedule(
+    schedule_id: str,
+    payload: ScheduleEntryInput,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, Any]:
+    assert_branch_access(user, branch_id)
+    if payload.day not in WEEK_DAYS:
+        raise HTTPException(status_code=400, detail="Неверный день недели")
+
+    branch_db = await get_branch_db(branch_id)
+    existing = await branch_db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Расписание не найдено")
+
+    conflicts = await collect_conflicts(
+        branch_db,
+        payload.day,
+        payload.start,
+        payload.end,
+        payload.teacher_id,
+        payload.classroom_id,
+        skip_schedule_id=schedule_id,
+    )
+    if conflicts["has_conflict"]:
+        raise HTTPException(status_code=400, detail=conflicts)
+
+    update_doc = {
+        "day": payload.day,
+        "start": payload.start,
+        "end": payload.end,
+        "group_id": payload.group_id,
+        "teacher_id": payload.teacher_id,
+        "classroom_id": payload.classroom_id,
+        "updated_at": now_iso(),
+    }
+    await branch_db.schedules.update_one({"id": schedule_id}, {"$set": update_doc})
+    updated = await branch_db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    return sanitize(updated) or {**existing, **update_doc}
 
 
 @app.get("/api/student/schedule")
