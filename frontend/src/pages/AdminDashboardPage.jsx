@@ -113,6 +113,12 @@ export default function AdminDashboardPage() {
     new_username: user?.username || "",
     new_password: "",
   });
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    message: "",
+    action: null,
+  });
 
   const config = useMemo(() => authConfig(token), [token]);
 
@@ -130,6 +136,21 @@ export default function AdminDashboardPage() {
   };
 
   const withBranch = () => ({ params: { branch_id: selectedBranchId }, ...config });
+
+  const openConfirmDialog = (title, message, action) => {
+    setConfirmDialog({ open: true, title, message, action });
+  };
+
+  const closeConfirmDialog = () => {
+    setConfirmDialog({ open: false, title: "", message: "", action: null });
+  };
+
+  const executeConfirmDialogAction = async () => {
+    if (typeof confirmDialog.action === "function") {
+      await confirmDialog.action();
+    }
+    closeConfirmDialog();
+  };
 
   const loadBranchData = async () => {
     if (!selectedBranchId) return;
@@ -234,9 +255,6 @@ export default function AdminDashboardPage() {
   };
 
   const removeBranch = async (branchId) => {
-    if (!window.confirm("Удалить филиал? Это удалит его БД и пользователей филиала.")) {
-      return;
-    }
     try {
       await api.delete(`/api/admin/branches/${branchId}`, config);
       await loadBranches();
@@ -305,7 +323,6 @@ export default function AdminDashboardPage() {
   };
 
   const deleteAllLeads = async () => {
-    if (!window.confirm("Удалить все заявки?")) return;
     try {
       await api.delete("/api/admin/leads", withBranch());
       setSelectedLeadIds([]);
@@ -336,7 +353,6 @@ export default function AdminDashboardPage() {
   };
 
   const deleteAllGraduates = async () => {
-    if (!window.confirm("Очистить весь список выпускников?")) return;
     try {
       await api.delete("/api/admin/graduates", withBranch());
       setSelectedGraduateIds([]);
@@ -538,9 +554,6 @@ export default function AdminDashboardPage() {
   };
 
   const graduateGroup = async (groupId) => {
-    if (!window.confirm("Выпустить группу? Ученики станут выпускниками и их аккаунты будут удалены.")) {
-      return;
-    }
     try {
       const response = await api.post(`/api/admin/groups/${groupId}/graduate`, {}, withBranch());
       await loadBranchData();
@@ -845,7 +858,13 @@ export default function AdminDashboardPage() {
                   </button>
                   <button
                     className="danger-btn"
-                    onClick={() => removeBranch(branch.id)}
+                    onClick={() =>
+                      openConfirmDialog(
+                        "Удаление филиала",
+                        "Это удалит БД филиала и пользователей филиала. Продолжить?",
+                        () => removeBranch(branch.id)
+                      )
+                    }
                     data-testid={`branch-management-delete-${branch.id}`}
                   >
                     Удалить
@@ -1198,7 +1217,11 @@ export default function AdminDashboardPage() {
               <button className="danger-btn" onClick={deleteSelectedLeads} data-testid="leads-delete-selected-button">
                 Удалить выбранные
               </button>
-              <button className="danger-btn" onClick={deleteAllLeads} data-testid="leads-delete-all-button">
+              <button
+                className="danger-btn"
+                onClick={() => openConfirmDialog("Очистка заявок", "Удалить все заявки текущего филиала?", deleteAllLeads)}
+                data-testid="leads-delete-all-button"
+              >
                 Очистить всё
               </button>
             </div>
@@ -1518,7 +1541,17 @@ export default function AdminDashboardPage() {
                   <span data-testid={`group-name-${group.id}`}>
                     {group.name} {group.is_individual ? "(инд.)" : ""}
                   </span>
-                  <button className="primary-btn" onClick={() => graduateGroup(group.id)} data-testid={`group-graduate-button-${group.id}`}>
+                  <button
+                    className="primary-btn"
+                    onClick={() =>
+                      openConfirmDialog(
+                        "Выпуск группы",
+                        "Ученики будут перенесены в выпускники, удалены из активных и их аккаунты будут удалены. Продолжить?",
+                        () => graduateGroup(group.id)
+                      )
+                    }
+                    data-testid={`group-graduate-button-${group.id}`}
+                  >
                     Выпустить группу
                   </button>
                   <button className="danger-btn" onClick={() => removeGroup(group.id)} data-testid={`group-delete-button-${group.id}`}>
@@ -1628,7 +1661,13 @@ export default function AdminDashboardPage() {
               <button className="danger-btn" onClick={deleteSelectedGraduates} data-testid="graduates-delete-selected-button">
                 Удалить выбранных
               </button>
-              <button className="danger-btn" onClick={deleteAllGraduates} data-testid="graduates-delete-all-button">
+              <button
+                className="danger-btn"
+                onClick={() =>
+                  openConfirmDialog("Очистка выпускников", "Удалить всех выпускников текущего филиала?", deleteAllGraduates)
+                }
+                data-testid="graduates-delete-all-button"
+              >
                 Очистить всё
               </button>
             </div>
@@ -1917,6 +1956,23 @@ export default function AdminDashboardPage() {
           </section>
         )}
       </main>
+
+      {confirmDialog.open && (
+        <div className="confirm-overlay" data-testid="confirm-dialog-overlay">
+          <div className="confirm-card" data-testid="confirm-dialog-card">
+            <h3 data-testid="confirm-dialog-title">{confirmDialog.title}</h3>
+            <p data-testid="confirm-dialog-message">{confirmDialog.message}</p>
+            <div className="inline-form compact" data-testid="confirm-dialog-actions">
+              <button className="primary-btn" onClick={executeConfirmDialogAction} data-testid="confirm-dialog-approve-button">
+                Подтвердить
+              </button>
+              <button className="danger-btn" onClick={closeConfirmDialog} data-testid="confirm-dialog-cancel-button">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
