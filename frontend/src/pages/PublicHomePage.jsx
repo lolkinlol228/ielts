@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, MessageCircle, Phone, Languages, CalendarDays } from "lucide-react";
+import { Facebook, Instagram, MapPin, MessageCircle, Phone, Languages, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
+import L from "leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+
+const markerIcon = new L.Icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 const LANGS = [
   { code: "ru", label: "RU" },
@@ -14,59 +26,65 @@ const LANGS = [
 const STATIC_TEXT = {
   ru: {
     menuAbout: "О нас",
-    menuProgram: "Программа",
+    menuTeachers: "Наши преподаватели",
     menuSuccess: "Успехи",
     menuReviews: "Отзывы",
+    menuLocations: "Филиалы",
     login: "Войти",
     schedule: "Расписание занятий",
     whyChoose: "Почему выбирают нас",
-    courseProgram: "Программа курса",
-    durationInfo: "Длительность курса зависит от уровня студента. Уровень определяем бесплатно в нашем центре.",
+    teachersTitle: "Наши преподаватели",
+    teachersSubtitle: "Сильная команда преподавателей с фокусом на результат IELTS.",
     alumni: "Успехи выпускников",
-    consult: "Для записи на индивидуальную консультацию",
     socialTalk: "Что о нас говорят в соц.сетях?",
     ctaTitle: "Приходи на бесплатное занятие и получи диагностику IELTS бесплатно",
     fullName: "ФИО",
+    preferredBranch: "Какой филиал вам ближе?",
     phone: "Номер телефона",
     submit: "Оставить заявку",
+    locationsTitle: "Наши филиалы на карте",
     offer: "Публичный Договор-Оферты",
   },
   en: {
     menuAbout: "About",
-    menuProgram: "Program",
+    menuTeachers: "Our Teachers",
     menuSuccess: "Success",
     menuReviews: "Reviews",
+    menuLocations: "Branches",
     login: "Login",
     schedule: "Class Schedule",
     whyChoose: "Why choose us",
-    courseProgram: "Course Program",
-    durationInfo: "Course duration depends on the student's level. Level check is free at our center.",
+    teachersTitle: "Our Teachers",
+    teachersSubtitle: "A strong IELTS-focused team committed to measurable results.",
     alumni: "Alumni Success",
-    consult: "For an individual consultation",
     socialTalk: "What do people say about us on social media?",
     ctaTitle: "Come to a free class and get a free IELTS diagnostic",
     fullName: "Full Name",
+    preferredBranch: "Which branch is closer to you?",
     phone: "Phone Number",
     submit: "Submit",
+    locationsTitle: "Our branch locations",
     offer: "Public Offer Agreement",
   },
   kk: {
     menuAbout: "Біз туралы",
-    menuProgram: "Бағдарлама",
+    menuTeachers: "Біздің оқытушылар",
     menuSuccess: "Жетістіктер",
     menuReviews: "Пікірлер",
+    menuLocations: "Филиалдар",
     login: "Кіру",
     schedule: "Сабақ кестесі",
     whyChoose: "Неге бізді таңдайды",
-    courseProgram: "Курс бағдарламасы",
-    durationInfo: "Курс ұзақтығы студент деңгейіне байланысты. Деңгейді орталығымызда тегін анықтаймыз.",
+    teachersTitle: "Біздің оқытушылар",
+    teachersSubtitle: "IELTS нәтижесіне бағытталған мықты оқытушылар командасы.",
     alumni: "Түлектер жетістігі",
-    consult: "Жеке консультацияға жазылу үшін",
     socialTalk: "Әлеуметтік желілерде біз туралы не айтады?",
     ctaTitle: "Тегін сабаққа келіп, IELTS диагностикасын тегін алыңыз",
     fullName: "Аты-жөні",
+    preferredBranch: "Сізге қай филиал жақын?",
     phone: "Телефон нөмірі",
     submit: "Өтінім жіберу",
+    locationsTitle: "Филиалдар картасы",
     offer: "Қоғамдық Оферта Келісімі",
   },
 };
@@ -98,9 +116,10 @@ export default function PublicHomePage() {
   const { user, isAuthenticated } = useAuth();
   const [lang, setLang] = useState("ru");
   const [branches, setBranches] = useState([]);
-  const [branchId, setBranchId] = useState("");
+  const [publicBranchId, setPublicBranchId] = useState("");
   const [settings, setSettings] = useState(null);
-  const [form, setForm] = useState({ full_name: "", phone: "" });
+  const [teachers, setTeachers] = useState([]);
+  const [form, setForm] = useState({ full_name: "", preferred_branch_id: "", phone: "" });
   const [submitting, setSubmitting] = useState(false);
 
   const text = useMemo(() => STATIC_TEXT[lang], [lang]);
@@ -108,20 +127,21 @@ export default function PublicHomePage() {
   const loadBranches = async () => {
     const response = await api.get("/api/public/branches");
     setBranches(response.data);
-    const persisted = localStorage.getItem("public_branch_id");
-    const initial = persisted && response.data.some((item) => item.id === persisted)
-      ? persisted
-      : response.data[0]?.id;
+    const initial = response.data[0]?.id;
     if (initial) {
-      setBranchId(initial);
+      setPublicBranchId(initial);
+      setForm((prev) => ({ ...prev, preferred_branch_id: initial }));
     }
   };
 
-  const loadSettings = async (selectedBranchId) => {
-    if (!selectedBranchId) return;
-    const response = await api.get("/api/public/settings", { params: { branch_id: selectedBranchId } });
-    setSettings(response.data);
-    applyTheme(response.data.colors);
+  const loadPublicData = async (selectedBranchId) => {
+    const [settingsResponse, teachersResponse] = await Promise.all([
+      api.get("/api/public/settings", { params: { branch_id: selectedBranchId } }),
+      api.get("/api/public/teachers", { params: { branch_id: selectedBranchId } }),
+    ]);
+    setSettings(settingsResponse.data);
+    setTeachers(teachersResponse.data);
+    applyTheme(settingsResponse.data.colors);
   };
 
   useEffect(() => {
@@ -129,22 +149,25 @@ export default function PublicHomePage() {
   }, []);
 
   useEffect(() => {
-    if (!branchId) return;
-    localStorage.setItem("public_branch_id", branchId);
-    loadSettings(branchId).catch(() => toast.error("Не удалось загрузить сайт"));
-  }, [branchId]);
+    if (!publicBranchId) return;
+    loadPublicData(publicBranchId).catch(() => toast.error("Не удалось загрузить сайт"));
+  }, [publicBranchId]);
 
   const submitLead = async (event) => {
     event.preventDefault();
-    if (!form.full_name || !form.phone) {
-      toast.error("Заполните ФИО и номер телефона");
+    if (!form.full_name || !form.phone || !form.preferred_branch_id) {
+      toast.error("Заполните ФИО, филиал и номер телефона");
       return;
     }
     setSubmitting(true);
     try {
-      await api.post("/api/public/leads", { branch_id: branchId, ...form });
+      await api.post("/api/public/leads", {
+        branch_id: form.preferred_branch_id,
+        full_name: form.full_name,
+        phone: form.phone,
+      });
       toast.success("Ваша заявка принята");
-      setForm({ full_name: "", phone: "" });
+      setForm((prev) => ({ ...prev, full_name: "", phone: "" }));
     } catch {
       toast.error("Ошибка отправки заявки");
     } finally {
@@ -156,7 +179,18 @@ export default function PublicHomePage() {
   const social = settings?.social_links || {};
   const testimonials = settings?.testimonials || [];
   const metrics = settings?.success_metrics || [];
-  const courseItems = settings?.course_program?.items || [];
+  const mapLocations = useMemo(
+    () =>
+      (settings?.map_locations || [])
+        .map((item) => ({
+          ...item,
+          lat: Number(item.lat),
+          lng: Number(item.lng),
+        }))
+        .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)),
+    [settings?.map_locations]
+  );
+  const mapCenter = mapLocations[0] ? [mapLocations[0].lat, mapLocations[0].lng] : [43.238949, 76.889709];
 
   return (
     <div className="public-page" data-testid="public-page-root">
@@ -176,9 +210,10 @@ export default function PublicHomePage() {
 
           <nav className="center-nav" data-testid="header-nav-menu">
             <a href="#about" data-testid="menu-link-about">{text.menuAbout}</a>
-            <a href="#program" data-testid="menu-link-program">{text.menuProgram}</a>
+            <a href="#teachers" data-testid="menu-link-teachers">{text.menuTeachers}</a>
             <a href="#success" data-testid="menu-link-success">{text.menuSuccess}</a>
             <a href="#reviews" data-testid="menu-link-reviews">{text.menuReviews}</a>
+            <a href="#locations" data-testid="menu-link-locations">{text.menuLocations}</a>
           </nav>
 
           <div className="right-actions" data-testid="header-right-actions">
@@ -233,19 +268,6 @@ export default function PublicHomePage() {
               <div className="hero-content" data-testid="hero-content-block">
                 <h1 data-testid="hero-title">{getLocalized(content.hero_title, lang)}</h1>
                 <p data-testid="hero-subtitle">{getLocalized(content.hero_subtitle, lang)}</p>
-                <div className="hero-controls" data-testid="hero-controls-row">
-                  <select
-                    value={branchId}
-                    onChange={(event) => setBranchId(event.target.value)}
-                    data-testid="branch-selector-public"
-                  >
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name} — {branch.location}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
             </div>
           </div>
@@ -269,24 +291,25 @@ export default function PublicHomePage() {
           </div>
         </section>
 
-        <section id="program" className="content-section surface" data-testid="program-section">
-          <div className="container split-grid">
-            <div data-testid="program-left-column">
-              <h2>{text.courseProgram}</h2>
-              <p>{text.durationInfo}</p>
-            </div>
-            <div className="program-card" data-testid="program-card">
-              <p className="program-strong" data-testid="program-lessons-per-month">
-                {settings?.course_program?.lessons_per_month || "12 занятий/мес."}
-              </p>
-              <p className="program-strong" data-testid="program-frequency">
-                {settings?.course_program?.frequency || "3 раза в неделю по 90 минут"}
-              </p>
-              <ul data-testid="program-item-list">
-                {courseItems.map((item, index) => (
-                  <li key={`${item}-${index}`} data-testid={`program-item-${index + 1}`}>{item}</li>
-                ))}
-              </ul>
+        <section id="teachers" className="content-section surface" data-testid="teachers-section">
+          <div className="container">
+            <h2 data-testid="teachers-title">{text.teachersTitle}</h2>
+            <p data-testid="teachers-subtitle">{text.teachersSubtitle}</p>
+            <div className="teacher-grid" data-testid="teachers-grid">
+              {(teachers || []).map((teacher, index) => (
+                <article key={teacher.id} className="teacher-card" data-testid={`teacher-card-${index + 1}`}>
+                  <img
+                    src={teacher.image_url || defaultImages.classroom}
+                    alt={teacher.name}
+                    data-testid={`teacher-image-${index + 1}`}
+                  />
+                  <div>
+                    <h3 data-testid={`teacher-name-${index + 1}`}>{teacher.name}</h3>
+                    <p data-testid={`teacher-specialization-${index + 1}`}>{teacher.specialization || "IELTS Instructor"}</p>
+                    <small data-testid={`teacher-bio-${index + 1}`}>{getLocalized(teacher.bio, lang)}</small>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -304,7 +327,6 @@ export default function PublicHomePage() {
             </div>
 
             <div className="consult-row" data-testid="consultation-info-row">
-              <p data-testid="consultation-text">{getLocalized(content.consultation_title, lang)}</p>
               <div className="social-icons" data-testid="consultation-social-links">
                 <a href={social.whatsapp || "#"} target="_blank" rel="noreferrer" data-testid="consultation-whatsapp-link">
                   <MessageCircle size={16} />
@@ -315,6 +337,41 @@ export default function PublicHomePage() {
                 <a href={social.facebook || "#"} target="_blank" rel="noreferrer" data-testid="consultation-facebook-link">
                   <Facebook size={16} />
                 </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="locations" className="content-section" data-testid="locations-section">
+          <div className="container">
+            <h2 data-testid="locations-title">{text.locationsTitle}</h2>
+            <div className="locations-grid" data-testid="locations-grid">
+              <div className="map-box" data-testid="locations-map-box">
+                <MapContainer center={mapCenter} zoom={11} style={{ width: "100%", height: "420px" }} data-testid="locations-map-container">
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {mapLocations.map((location) => (
+                    <Marker key={location.id || `${location.lat}-${location.lng}`} position={[location.lat, location.lng]} icon={markerIcon}>
+                      <Popup>
+                        <strong>{location.title}</strong>
+                        <br />
+                        {location.address}
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
+              </div>
+              <div className="location-list" data-testid="location-list">
+                {mapLocations.map((location, index) => (
+                  <article key={location.id || `${location.lat}-${location.lng}`} className="location-card" data-testid={`location-card-${index + 1}`}>
+                    <h3 data-testid={`location-title-${index + 1}`}>
+                      <MapPin size={16} /> {location.title}
+                    </h3>
+                    <p data-testid={`location-address-${index + 1}`}>{location.address}</p>
+                  </article>
+                ))}
               </div>
             </div>
           </div>
@@ -352,6 +409,18 @@ export default function PublicHomePage() {
                 placeholder={text.fullName}
                 data-testid="consultation-input-full-name"
               />
+              <select
+                value={form.preferred_branch_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, preferred_branch_id: event.target.value }))}
+                data-testid="consultation-branch-select"
+              >
+                <option value="">{text.preferredBranch}</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name} — {branch.location}
+                  </option>
+                ))}
+              </select>
               <input
                 value={form.phone}
                 onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}

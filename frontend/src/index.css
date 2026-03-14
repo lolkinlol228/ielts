@@ -348,6 +348,50 @@ textarea {
   gap: 1rem;
 }
 
+.teacher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.teacher-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  display: grid;
+}
+
+.teacher-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.teacher-card div {
+  padding: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.teacher-card h3 {
+  margin: 0;
+  font-family: "Outfit", sans-serif;
+  font-size: 1.2rem;
+}
+
+.teacher-card p {
+  margin: 0;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.teacher-card small {
+  color: var(--secondary);
+  line-height: 1.6;
+}
+
 .review-card {
   padding: 1rem;
   display: grid;
@@ -380,8 +424,51 @@ textarea {
 
 .cta-form {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr auto;
   gap: 0.8rem;
+}
+
+.locations-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.map-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.map-box .leaflet-container {
+  width: 100%;
+  height: 420px;
+}
+
+.location-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.location-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #fff;
+}
+
+.location-card h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+}
+
+.location-card p {
+  margin: 0.5rem 0 0;
+  color: var(--secondary);
 }
 
 .footer {
@@ -519,6 +606,10 @@ textarea {
 
 .inline-form {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.inline-form h3 {
+  margin: 0;
 }
 
 .inline-form.compact {
@@ -678,7 +769,8 @@ textarea {
 @media (max-width: 768px) {
   .split-grid,
   .cta-form,
-  .footer-grid {
+  .footer-grid,
+  .locations-grid {
     grid-template-columns: 1fr;
   }
 

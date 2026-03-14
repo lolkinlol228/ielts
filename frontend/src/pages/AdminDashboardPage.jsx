@@ -37,6 +37,8 @@ const defaultSiteDraft = {
     consultation_title: { ru: "", en: "", kk: "" },
     offer_title: { ru: "", en: "", kk: "" },
   },
+  testimonials: [],
+  map_locations: [],
 };
 
 const defaultScheduleConfig = {
@@ -79,7 +81,13 @@ export default function AdminDashboardPage() {
   const [scheduleConfig, setScheduleConfig] = useState(defaultScheduleConfig);
   const [autoSlots, setAutoSlots] = useState([]);
 
-  const [teacherForm, setTeacherForm] = useState({ name: "", phone: "" });
+  const [teacherForm, setTeacherForm] = useState({
+    name: "",
+    phone: "",
+    image_url: "",
+    specialization: "",
+    bio: { ru: "", en: "", kk: "" },
+  });
   const [classroomForm, setClassroomForm] = useState({ name: "", capacity: "" });
   const [groupForm, setGroupForm] = useState({ prefix: "ielts", index: 1, year: 2025, is_individual: false });
   const [assignForm, setAssignForm] = useState({ student_id: "", group_id: "" });
@@ -88,6 +96,7 @@ export default function AdminDashboardPage() {
   const [conflictState, setConflictState] = useState(null);
 
   const [credentialsDraft, setCredentialsDraft] = useState({});
+  const [teacherDrafts, setTeacherDrafts] = useState({});
 
   const config = useMemo(() => authConfig(token), [token]);
 
@@ -141,6 +150,24 @@ export default function AdminDashboardPage() {
     loadBranchData().catch(() => toast.error("Не удалось загрузить данные филиала"));
   }, [selectedBranchId]);
 
+  useEffect(() => {
+    const nextDrafts = {};
+    teachers.forEach((teacher) => {
+      nextDrafts[teacher.id] = {
+        name: teacher.name || "",
+        phone: teacher.phone || "",
+        image_url: teacher.image_url || "",
+        specialization: teacher.specialization || "",
+        bio: {
+          ru: teacher.bio?.ru || "",
+          en: teacher.bio?.en || "",
+          kk: teacher.bio?.kk || "",
+        },
+      };
+    });
+    setTeacherDrafts(nextDrafts);
+  }, [teachers]);
+
   const createBranch = async () => {
     if (!newBranch.name || !newBranch.location) {
       toast.error("Заполните название и местоположение");
@@ -165,6 +192,8 @@ export default function AdminDashboardPage() {
         social_links: siteDraft.social_links,
         colors: siteDraft.colors,
         content: siteDraft.content,
+        testimonials: siteDraft.testimonials,
+        map_locations: siteDraft.map_locations,
       }, withBranch());
       applyTheme(siteDraft.colors);
       toast.success("Изменения сайта сохранены");
@@ -204,11 +233,32 @@ export default function AdminDashboardPage() {
     }
     try {
       await api.post("/api/admin/teachers", teacherForm, withBranch());
-      setTeacherForm({ name: "", phone: "" });
+      setTeacherForm({
+        name: "",
+        phone: "",
+        image_url: "",
+        specialization: "",
+        bio: { ru: "", en: "", kk: "" },
+      });
       await loadBranchData();
       toast.success("Преподаватель добавлен");
     } catch {
       toast.error("Ошибка добавления преподавателя");
+    }
+  };
+
+  const saveTeacher = async (teacherId) => {
+    const payload = teacherDrafts[teacherId];
+    if (!payload?.name || !payload?.phone) {
+      toast.error("Для сохранения заполните имя и телефон преподавателя");
+      return;
+    }
+    try {
+      await api.put(`/api/admin/teachers/${teacherId}`, payload, withBranch());
+      await loadBranchData();
+      toast.success("Преподаватель обновлён");
+    } catch {
+      toast.error("Ошибка обновления преподавателя");
     }
   };
 
@@ -220,6 +270,52 @@ export default function AdminDashboardPage() {
     } catch {
       toast.error("Ошибка удаления преподавателя");
     }
+  };
+
+  const addTestimonial = () => {
+    setSiteDraft((prev) => ({
+      ...prev,
+      testimonials: [
+        ...(prev.testimonials || []),
+        {
+          id: crypto.randomUUID(),
+          name: "",
+          platform: "instagram",
+          image_url: "",
+          text: { ru: "", en: "", kk: "" },
+        },
+      ],
+    }));
+  };
+
+  const removeTestimonial = (id) => {
+    setSiteDraft((prev) => ({
+      ...prev,
+      testimonials: (prev.testimonials || []).filter((item) => item.id !== id),
+    }));
+  };
+
+  const addMapLocation = () => {
+    setSiteDraft((prev) => ({
+      ...prev,
+      map_locations: [
+        ...(prev.map_locations || []),
+        {
+          id: crypto.randomUUID(),
+          title: "",
+          address: "",
+          lat: 43.238949,
+          lng: 76.889709,
+        },
+      ],
+    }));
+  };
+
+  const removeMapLocation = (id) => {
+    setSiteDraft((prev) => ({
+      ...prev,
+      map_locations: (prev.map_locations || []).filter((item) => item.id !== id),
+    }));
   };
 
   const addClassroom = async () => {
@@ -622,6 +718,171 @@ export default function AdminDashboardPage() {
               ))}
             </div>
 
+            <div className="inline-form" data-testid="site-editor-testimonials-header">
+              <h3 data-testid="site-editor-testimonials-title">Отзывы из соцсетей</h3>
+              <button className="primary-btn" onClick={addTestimonial} data-testid="site-editor-add-testimonial-button">
+                Добавить отзыв
+              </button>
+            </div>
+
+            <div className="translations-grid" data-testid="site-editor-testimonials-list">
+              {(siteDraft.testimonials || []).map((testimonial, index) => (
+                <div key={testimonial.id} className="translation-card" data-testid={`site-editor-testimonial-card-${index + 1}`}>
+                  <input
+                    value={testimonial.name || ""}
+                    placeholder="Имя"
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        testimonials: (prev.testimonials || []).map((item) =>
+                          item.id === testimonial.id ? { ...item, name: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    data-testid={`site-editor-testimonial-name-${index + 1}`}
+                  />
+                  <select
+                    value={testimonial.platform || "instagram"}
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        testimonials: (prev.testimonials || []).map((item) =>
+                          item.id === testimonial.id ? { ...item, platform: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    data-testid={`site-editor-testimonial-platform-${index + 1}`}
+                  >
+                    <option value="instagram">Instagram</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="whatsapp">WhatsApp</option>
+                  </select>
+                  <input
+                    value={testimonial.image_url || ""}
+                    placeholder="URL фото"
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        testimonials: (prev.testimonials || []).map((item) =>
+                          item.id === testimonial.id ? { ...item, image_url: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    data-testid={`site-editor-testimonial-image-${index + 1}`}
+                  />
+                  {[
+                    { code: "ru", label: "Текст RU" },
+                    { code: "en", label: "Text EN" },
+                    { code: "kk", label: "Мәтін KK" },
+                  ].map((langItem) => (
+                    <textarea
+                      key={`${testimonial.id}-${langItem.code}`}
+                      value={testimonial.text?.[langItem.code] || ""}
+                      placeholder={langItem.label}
+                      onChange={(event) =>
+                        setSiteDraft((prev) => ({
+                          ...prev,
+                          testimonials: (prev.testimonials || []).map((item) =>
+                            item.id === testimonial.id
+                              ? {
+                                  ...item,
+                                  text: { ...item.text, [langItem.code]: event.target.value },
+                                }
+                              : item
+                          ),
+                        }))
+                      }
+                      data-testid={`site-editor-testimonial-text-${index + 1}-${langItem.code}`}
+                    />
+                  ))}
+                  <button
+                    className="danger-btn"
+                    onClick={() => removeTestimonial(testimonial.id)}
+                    data-testid={`site-editor-testimonial-delete-${index + 1}`}
+                  >
+                    Удалить отзыв
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="inline-form" data-testid="site-editor-map-header">
+              <h3 data-testid="site-editor-map-title">Точки филиалов на карте</h3>
+              <button className="primary-btn" onClick={addMapLocation} data-testid="site-editor-add-map-location-button">
+                Добавить точку
+              </button>
+            </div>
+
+            <div className="translations-grid" data-testid="site-editor-map-location-list">
+              {(siteDraft.map_locations || []).map((location, index) => (
+                <div key={location.id} className="translation-card" data-testid={`site-editor-map-location-card-${index + 1}`}>
+                  <input
+                    value={location.title || ""}
+                    placeholder="Название точки"
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        map_locations: (prev.map_locations || []).map((item) =>
+                          item.id === location.id ? { ...item, title: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    data-testid={`site-editor-map-location-title-${index + 1}`}
+                  />
+                  <input
+                    value={location.address || ""}
+                    placeholder="Адрес"
+                    onChange={(event) =>
+                      setSiteDraft((prev) => ({
+                        ...prev,
+                        map_locations: (prev.map_locations || []).map((item) =>
+                          item.id === location.id ? { ...item, address: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    data-testid={`site-editor-map-location-address-${index + 1}`}
+                  />
+                  <div className="inline-form compact">
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={location.lat}
+                      onChange={(event) =>
+                        setSiteDraft((prev) => ({
+                          ...prev,
+                          map_locations: (prev.map_locations || []).map((item) =>
+                            item.id === location.id ? { ...item, lat: Number(event.target.value) } : item
+                          ),
+                        }))
+                      }
+                      data-testid={`site-editor-map-location-lat-${index + 1}`}
+                    />
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={location.lng}
+                      onChange={(event) =>
+                        setSiteDraft((prev) => ({
+                          ...prev,
+                          map_locations: (prev.map_locations || []).map((item) =>
+                            item.id === location.id ? { ...item, lng: Number(event.target.value) } : item
+                          ),
+                        }))
+                      }
+                      data-testid={`site-editor-map-location-lng-${index + 1}`}
+                    />
+                  </div>
+                  <button
+                    className="danger-btn"
+                    onClick={() => removeMapLocation(location.id)}
+                    data-testid={`site-editor-map-location-delete-${index + 1}`}
+                  >
+                    Удалить точку
+                  </button>
+                </div>
+              ))}
+            </div>
+
             <button className="primary-btn" onClick={saveSiteSettings} data-testid="site-editor-save-button">
               Сохранить изменения сайта
             </button>
@@ -706,7 +967,7 @@ export default function AdminDashboardPage() {
             <div className="split-grid">
               <div className="form-panel" data-testid="teacher-panel">
                 <h3 data-testid="teacher-panel-title">Преподаватели</h3>
-                <div className="inline-form">
+                <div className="form-grid">
                   <input
                     placeholder="Имя преподавателя"
                     value={teacherForm.name}
@@ -719,6 +980,51 @@ export default function AdminDashboardPage() {
                     onChange={(event) => setTeacherForm((prev) => ({ ...prev, phone: event.target.value }))}
                     data-testid="teacher-phone-input"
                   />
+                  <input
+                    placeholder="Специализация"
+                    value={teacherForm.specialization}
+                    onChange={(event) => setTeacherForm((prev) => ({ ...prev, specialization: event.target.value }))}
+                    data-testid="teacher-specialization-input"
+                  />
+                  <input
+                    placeholder="URL фото"
+                    value={teacherForm.image_url}
+                    onChange={(event) => setTeacherForm((prev) => ({ ...prev, image_url: event.target.value }))}
+                    data-testid="teacher-image-input"
+                  />
+                  <textarea
+                    placeholder="Описание RU"
+                    value={teacherForm.bio.ru}
+                    onChange={(event) =>
+                      setTeacherForm((prev) => ({
+                        ...prev,
+                        bio: { ...prev.bio, ru: event.target.value },
+                      }))
+                    }
+                    data-testid="teacher-bio-ru-input"
+                  />
+                  <textarea
+                    placeholder="Description EN"
+                    value={teacherForm.bio.en}
+                    onChange={(event) =>
+                      setTeacherForm((prev) => ({
+                        ...prev,
+                        bio: { ...prev.bio, en: event.target.value },
+                      }))
+                    }
+                    data-testid="teacher-bio-en-input"
+                  />
+                  <textarea
+                    placeholder="Сипаттама KK"
+                    value={teacherForm.bio.kk}
+                    onChange={(event) =>
+                      setTeacherForm((prev) => ({
+                        ...prev,
+                        bio: { ...prev.bio, kk: event.target.value },
+                      }))
+                    }
+                    data-testid="teacher-bio-kk-input"
+                  />
                   <button className="primary-btn" onClick={addTeacher} data-testid="teacher-add-button">
                     Добавить
                   </button>
@@ -726,11 +1032,79 @@ export default function AdminDashboardPage() {
 
                 <div className="simple-list" data-testid="teacher-list">
                   {teachers.map((teacher) => (
-                    <div key={teacher.id} className="row" data-testid={`teacher-row-${teacher.id}`}>
-                      <span data-testid={`teacher-name-${teacher.id}`}>{teacher.name}</span>
-                      <button className="danger-btn" onClick={() => removeTeacher(teacher.id)} data-testid={`teacher-delete-button-${teacher.id}`}>
-                        Удалить
-                      </button>
+                    <div key={teacher.id} className="translation-card" data-testid={`teacher-row-${teacher.id}`}>
+                      <input
+                        value={teacherDrafts[teacher.id]?.name || ""}
+                        onChange={(event) =>
+                          setTeacherDrafts((prev) => ({
+                            ...prev,
+                            [teacher.id]: { ...prev[teacher.id], name: event.target.value },
+                          }))
+                        }
+                        data-testid={`teacher-name-${teacher.id}`}
+                      />
+                      <input
+                        value={teacherDrafts[teacher.id]?.phone || ""}
+                        onChange={(event) =>
+                          setTeacherDrafts((prev) => ({
+                            ...prev,
+                            [teacher.id]: { ...prev[teacher.id], phone: event.target.value },
+                          }))
+                        }
+                        data-testid={`teacher-phone-${teacher.id}`}
+                      />
+                      <input
+                        value={teacherDrafts[teacher.id]?.specialization || ""}
+                        onChange={(event) =>
+                          setTeacherDrafts((prev) => ({
+                            ...prev,
+                            [teacher.id]: { ...prev[teacher.id], specialization: event.target.value },
+                          }))
+                        }
+                        data-testid={`teacher-specialization-${teacher.id}`}
+                      />
+                      <input
+                        value={teacherDrafts[teacher.id]?.image_url || ""}
+                        onChange={(event) =>
+                          setTeacherDrafts((prev) => ({
+                            ...prev,
+                            [teacher.id]: { ...prev[teacher.id], image_url: event.target.value },
+                          }))
+                        }
+                        data-testid={`teacher-image-${teacher.id}`}
+                      />
+                      {[
+                        { code: "ru", label: "RU" },
+                        { code: "en", label: "EN" },
+                        { code: "kk", label: "KK" },
+                      ].map((langItem) => (
+                        <textarea
+                          key={`${teacher.id}-${langItem.code}`}
+                          placeholder={`Bio ${langItem.label}`}
+                          value={teacherDrafts[teacher.id]?.bio?.[langItem.code] || ""}
+                          onChange={(event) =>
+                            setTeacherDrafts((prev) => ({
+                              ...prev,
+                              [teacher.id]: {
+                                ...prev[teacher.id],
+                                bio: {
+                                  ...prev[teacher.id]?.bio,
+                                  [langItem.code]: event.target.value,
+                                },
+                              },
+                            }))
+                          }
+                          data-testid={`teacher-bio-${teacher.id}-${langItem.code}`}
+                        />
+                      ))}
+                      <div className="inline-form compact">
+                        <button className="primary-btn" onClick={() => saveTeacher(teacher.id)} data-testid={`teacher-save-button-${teacher.id}`}>
+                          Сохранить
+                        </button>
+                        <button className="danger-btn" onClick={() => removeTeacher(teacher.id)} data-testid={`teacher-delete-button-${teacher.id}`}>
+                          Удалить
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

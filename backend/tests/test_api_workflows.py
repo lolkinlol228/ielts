@@ -6,7 +6,10 @@ import uuid
 
 import pytest
 import requests
+from dotenv import load_dotenv
 
+
+load_dotenv("/app/frontend/.env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
 if not BASE_URL:
@@ -30,6 +33,7 @@ def state():
         "student_username": None,
         "student_password": None,
         "teacher_id": None,
+        "teacher_name": None,
         "classroom_id": None,
         "group_a_id": None,
         "group_b_id": None,
@@ -95,6 +99,8 @@ def test_02_admin_branch_leads_resources_groups_schedule(api_client, state):
     assert state["branch_id"] in branch_ids
 
     # Site settings update + get verify
+    testimonial_id = str(uuid.uuid4())
+    map_location_id = str(uuid.uuid4())
     site_update_payload = {
         "brand_name": f"TEST IELTS {suffix}",
         "logo_url": "https://example.com/logo.png",
@@ -116,6 +122,24 @@ def test_02_admin_branch_leads_resources_groups_schedule(api_client, state):
             "consultation_title": {"ru": "C RU", "en": "C EN", "kk": "C KK"},
             "offer_title": {"ru": "O RU", "en": "O EN", "kk": "O KK"},
         },
+        "testimonials": [
+            {
+                "id": testimonial_id,
+                "name": "TEST Review User",
+                "platform": "instagram",
+                "image_url": "https://example.com/review.jpg",
+                "text": {"ru": "TEST RU review", "en": "TEST EN review", "kk": "TEST KK review"},
+            }
+        ],
+        "map_locations": [
+            {
+                "id": map_location_id,
+                "title": "TEST Branch Point",
+                "address": "TEST Address 123",
+                "lat": 43.238949,
+                "lng": 76.889709,
+            }
+        ],
     }
     site_put = api_client.put(
         f"{BASE_URL}/api/admin/site-settings",
@@ -135,6 +159,18 @@ def test_02_admin_branch_leads_resources_groups_schedule(api_client, state):
     )
     assert site_get.status_code == 200
     assert site_get.json()["logo_url"] == site_update_payload["logo_url"]
+    assert site_get.json()["testimonials"][0]["id"] == testimonial_id
+    assert site_get.json()["map_locations"][0]["id"] == map_location_id
+
+    public_settings = api_client.get(
+        f"{BASE_URL}/api/public/settings",
+        params={"branch_id": state["branch_id"]},
+        timeout=20,
+    )
+    assert public_settings.status_code == 200
+    public_settings_data = public_settings.json()
+    assert public_settings_data["testimonials"][0]["id"] == testimonial_id
+    assert public_settings_data["map_locations"][0]["id"] == map_location_id
 
     # Create lead from public and approve to student
     lead_create = api_client.post(
@@ -193,6 +229,23 @@ def test_02_admin_branch_leads_resources_groups_schedule(api_client, state):
     )
     assert teacher_create.status_code == 200
     state["teacher_id"] = teacher_create.json()["id"]
+    state["teacher_name"] = teacher_create.json()["name"]
+
+    teacher_update = api_client.put(
+        f"{BASE_URL}/api/admin/teachers/{state['teacher_id']}",
+        params={"branch_id": state["branch_id"]},
+        json={
+            "name": f"{state['teacher_name']} Updated",
+            "phone": "+77009998876",
+            "specialization": "TEST IELTS Expert",
+            "image_url": "https://example.com/teacher.jpg",
+            "bio": {"ru": "RU bio", "en": "EN bio", "kk": "KK bio"},
+        },
+        headers=auth_headers,
+        timeout=20,
+    )
+    assert teacher_update.status_code == 200
+    assert teacher_update.json()["specialization"] == "TEST IELTS Expert"
 
     class_create = api_client.post(
         f"{BASE_URL}/api/admin/classrooms",
@@ -212,6 +265,14 @@ def test_02_admin_branch_leads_resources_groups_schedule(api_client, state):
     )
     assert teachers.status_code == 200
     assert state["teacher_id"] in [t["id"] for t in teachers.json()]
+
+    public_teachers = api_client.get(
+        f"{BASE_URL}/api/public/teachers",
+        params={"branch_id": state["branch_id"]},
+        timeout=20,
+    )
+    assert public_teachers.status_code == 200
+    assert state["teacher_id"] in [t["id"] for t in public_teachers.json()]
 
     classrooms = api_client.get(
         f"{BASE_URL}/api/admin/classrooms",
@@ -383,3 +444,40 @@ def test_04_transfer_between_groups(api_client, state):
         timeout=20,
     )
     assert transfer.status_code == 200
+
+
+def test_05_teacher_delete_and_verify_public(api_client, state):
+    # verify delete flow still works and public endpoint reflects deletion
+    login = api_client.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"username": "admin", "password": "admin123", "branch_id": ""},
+        timeout=20,
+    )
+    assert login.status_code == 200
+    token = login.json()["token"]
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    delete_teacher = api_client.delete(
+        f"{BASE_URL}/api/admin/teachers/{state['teacher_id']}",
+        params={"branch_id": state["branch_id"]},
+        headers=auth_headers,
+        timeout=20,
+    )
+    assert delete_teacher.status_code == 200
+
+    teachers_after_delete = api_client.get(
+        f"{BASE_URL}/api/admin/teachers",
+        params={"branch_id": state["branch_id"]},
+        headers=auth_headers,
+        timeout=20,
+    )
+    assert teachers_after_delete.status_code == 200
+    assert state["teacher_id"] not in [t["id"] for t in teachers_after_delete.json()]
+
+    public_teachers_after_delete = api_client.get(
+        f"{BASE_URL}/api/public/teachers",
+        params={"branch_id": state["branch_id"]},
+        timeout=20,
+    )
+    assert public_teachers_after_delete.status_code == 200
+    assert state["teacher_id"] not in [t["id"] for t in public_teachers_after_delete.json()]

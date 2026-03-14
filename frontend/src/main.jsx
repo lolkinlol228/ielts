@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "sonner";
 import App from "./App";
 import { AuthProvider } from "./contexts/AuthContext";
+import "leaflet/dist/leaflet.css";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

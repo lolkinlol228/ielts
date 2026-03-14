@@ -7,13 +7,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from passlib.context import CryptContext
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 load_dotenv("/app/backend/.env")
@@ -189,6 +189,22 @@ def build_default_site_settings(brand_name: str) -> Dict[str, Any]:
                 },
             },
         ],
+        "map_locations": [
+            {
+                "id": str(uuid.uuid4()),
+                "title": "Филиал на Абая",
+                "address": "Абая 68, Алматы",
+                "lat": 43.2387,
+                "lng": 76.8897,
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "title": "Филиал в Мамыр",
+                "address": "Саина 197а, Мамыр 4, Алматы",
+                "lat": 43.2276,
+                "lng": 76.8412,
+            },
+        ],
         "updated_at": now_iso(),
     }
 
@@ -204,6 +220,17 @@ def build_default_schedule_settings() -> Dict[str, Any]:
         "break_duration": 0,
         "updated_at": now_iso(),
     }
+
+
+def normalize_site_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    defaults = build_default_site_settings(settings.get("brand_name") or "IELTS Center")
+    normalized = {**defaults, **settings}
+    normalized["social_links"] = {**defaults.get("social_links", {}), **settings.get("social_links", {})}
+    normalized["colors"] = {**defaults.get("colors", {}), **settings.get("colors", {})}
+    normalized["content"] = {**defaults.get("content", {}), **settings.get("content", {})}
+    normalized["testimonials"] = settings.get("testimonials", defaults.get("testimonials", []))
+    normalized["map_locations"] = settings.get("map_locations", defaults.get("map_locations", []))
+    return normalized
 
 
 class LoginRequest(BaseModel):
@@ -230,11 +257,16 @@ class SiteSettingsUpdate(BaseModel):
     social_links: Optional[Dict[str, str]] = None
     colors: Optional[Dict[str, str]] = None
     content: Optional[Dict[str, Dict[str, str]]] = None
+    testimonials: Optional[List[Dict[str, Any]]] = None
+    map_locations: Optional[List[Dict[str, Any]]] = None
 
 
 class TeacherInput(BaseModel):
     name: str
     phone: str
+    image_url: Optional[str] = None
+    specialization: Optional[str] = None
+    bio: Optional[Dict[str, str]] = None
 
 
 class ClassroomInput(BaseModel):
@@ -324,6 +356,13 @@ async def get_branch(branch_id: str) -> Dict[str, Any]:
     return branch
 
 
+async def get_default_branch() -> Dict[str, Any]:
+    branch = await master_db.branches.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    if not branch:
+        raise HTTPException(status_code=404, detail="Филиалы не настроены")
+    return branch
+
+
 def assert_branch_access(user: Dict[str, Any], branch_id: str) -> None:
     if user.get("role") == "admin" and user.get("branch_id") and user["branch_id"] != branch_id:
         raise HTTPException(status_code=403, detail="Нет доступа к этому филиалу")
@@ -405,13 +444,28 @@ async def public_branches() -> List[Dict[str, Any]]:
 
 
 @app.get("/api/public/settings")
-async def public_settings(branch_id: str = Query(...)) -> Dict[str, Any]:
+async def public_settings(branch_id: Optional[str] = Query(None)) -> Dict[str, Any]:
+    if not branch_id:
+        default_branch = await get_default_branch()
+        branch_id = default_branch["id"]
     branch_db = await get_branch_db(branch_id)
     settings = await branch_db.settings.find_one({"key": "site"}, {"_id": 0})
     if not settings:
         settings = build_default_site_settings("IELTS Center")
         await branch_db.settings.insert_one(settings)
-    return settings
+    normalized = normalize_site_settings(settings)
+    await branch_db.settings.update_one({"key": "site"}, {"$set": normalized}, upsert=True)
+    return normalized
+
+
+@app.get("/api/public/teachers")
+async def public_teachers(branch_id: Optional[str] = Query(None)) -> List[Dict[str, Any]]:
+    if not branch_id:
+        default_branch = await get_default_branch()
+        branch_id = default_branch["id"]
+    branch_db = await get_branch_db(branch_id)
+    teachers = await branch_db.teachers.find({}, {"_id": 0}).to_list(length=500)
+    return sorted(teachers, key=lambda item: item["name"])
 
 
 @app.post("/api/public/leads")
@@ -507,7 +561,9 @@ async def get_site_settings(
     if not settings:
         settings = build_default_site_settings("IELTS Center")
         await branch_db.settings.insert_one(settings)
-    return settings
+    normalized = normalize_site_settings(settings)
+    await branch_db.settings.update_one({"key": "site"}, {"$set": normalized}, upsert=True)
+    return normalized
 
 
 @app.put("/api/admin/site-settings")
@@ -521,6 +577,7 @@ async def update_site_settings(
     current = await branch_db.settings.find_one({"key": "site"}, {"_id": 0})
     if not current:
         current = build_default_site_settings("IELTS Center")
+    current = normalize_site_settings(current)
 
     merged = {**current}
     for field in ["brand_name", "logo_url", "phone"]:
@@ -533,6 +590,10 @@ async def update_site_settings(
         merged["colors"] = payload.colors
     if payload.content is not None:
         merged["content"] = payload.content
+    if payload.testimonials is not None:
+        merged["testimonials"] = payload.testimonials
+    if payload.map_locations is not None:
+        merged["map_locations"] = payload.map_locations
 
     merged["updated_at"] = now_iso()
     await branch_db.settings.update_one({"key": "site"}, {"$set": merged}, upsert=True)
@@ -683,10 +744,54 @@ async def create_teacher(
     user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
 ) -> Dict[str, Any]:
     assert_branch_access(user, branch_id)
-    teacher = {"id": str(uuid.uuid4()), "name": payload.name, "phone": payload.phone, "created_at": now_iso()}
+    teacher = {
+        "id": str(uuid.uuid4()),
+        "name": payload.name,
+        "phone": payload.phone,
+        "image_url": payload.image_url or "",
+        "specialization": payload.specialization or "IELTS Instructor",
+        "bio": payload.bio
+        or {
+            "ru": "Опытный преподаватель IELTS.",
+            "en": "Experienced IELTS instructor.",
+            "kk": "Тәжірибелі IELTS оқытушысы.",
+        },
+        "created_at": now_iso(),
+    }
     branch_db = await get_branch_db(branch_id)
     await branch_db.teachers.insert_one(teacher)
     return sanitize(teacher)
+
+
+@app.put("/api/admin/teachers/{teacher_id}")
+async def update_teacher(
+    teacher_id: str,
+    payload: TeacherInput,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, Any]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    existing = await branch_db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Преподаватель не найден")
+
+    update_doc = {
+        "name": payload.name,
+        "phone": payload.phone,
+        "image_url": payload.image_url or "",
+        "specialization": payload.specialization or "IELTS Instructor",
+        "bio": payload.bio
+        or {
+            "ru": "Опытный преподаватель IELTS.",
+            "en": "Experienced IELTS instructor.",
+            "kk": "Тәжірибелі IELTS оқытушысы.",
+        },
+        "updated_at": now_iso(),
+    }
+    await branch_db.teachers.update_one({"id": teacher_id}, {"$set": update_doc})
+    updated = await branch_db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    return sanitize(updated) or {**existing, **update_doc}
 
 
 @app.delete("/api/admin/teachers/{teacher_id}")
