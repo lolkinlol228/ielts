@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -45,6 +45,9 @@ security = HTTPBearer()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 WEEK_DAYS = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+MAX_FAILED_ATTEMPTS = 5
+FAILED_ATTEMPTS_WINDOW_SECONDS = 10 * 60
+ACCOUNT_LOCK_SECONDS = 15 * 60
 
 
 def now_iso() -> str:
@@ -392,6 +395,96 @@ async def get_branch_db(branch_id: str) -> AsyncIOMotorDatabase:
     return client[branch["db_name"]]
 
 
+def now_ts() -> int:
+    return int(datetime.now(timezone.utc).timestamp())
+
+
+async def record_login_attempt(
+    username: str,
+    success: bool,
+    branch_id: Optional[str],
+    role: str,
+    request: Request,
+) -> None:
+    attempt = {
+        "id": str(uuid.uuid4()),
+        "username": username,
+        "success": success,
+        "branch_id": branch_id,
+        "role": role,
+        "ip": request.client.host if request.client else "unknown",
+        "user_agent": request.headers.get("user-agent", "unknown"),
+        "created_at": now_iso(),
+        "ts": now_ts(),
+    }
+    await master_db.login_attempts.insert_one(attempt)
+
+
+async def lock_account_and_alert(
+    username: str,
+    branch_id: Optional[str],
+    role: str,
+) -> None:
+    current_ts = now_ts()
+    locked_until_ts = current_ts + ACCOUNT_LOCK_SECONDS
+    await master_db.account_locks.update_one(
+        {"username": username},
+        {
+            "$set": {
+                "username": username,
+                "locked_until_ts": locked_until_ts,
+                "locked_until": datetime.fromtimestamp(locked_until_ts, tz=timezone.utc).isoformat(),
+                "updated_at": now_iso(),
+                "reason": "too_many_failed_login_attempts",
+            }
+        },
+        upsert=True,
+    )
+
+    alert = await master_db.security_alerts.find_one(
+        {"username": username, "type": "bruteforce", "status": "new"},
+        {"_id": 0},
+    )
+    if alert:
+        await master_db.security_alerts.update_one(
+            {"id": alert["id"]},
+            {
+                "$inc": {"count": 1},
+                "$set": {
+                    "last_seen_at": now_iso(),
+                    "branch_id": branch_id,
+                    "role": role,
+                },
+            },
+        )
+    else:
+        await master_db.security_alerts.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "type": "bruteforce",
+                "status": "new",
+                "username": username,
+                "branch_id": branch_id,
+                "role": role,
+                "count": 1,
+                "message": f"Подозрение на перебор пароля для пользователя: {username}",
+                "created_at": now_iso(),
+                "last_seen_at": now_iso(),
+            }
+        )
+
+
+async def check_account_lock(username: str) -> Optional[int]:
+    lock = await master_db.account_locks.find_one({"username": username}, {"_id": 0})
+    if not lock:
+        return None
+    current_ts = now_ts()
+    if lock.get("locked_until_ts", 0) <= current_ts:
+        await master_db.account_locks.delete_one({"username": username})
+        return None
+    return lock["locked_until_ts"] - current_ts
+
+
 async def get_student_group_type_counts(branch_db: AsyncIOMotorDatabase, group_ids: List[str]) -> Dict[str, int]:
     if not group_ids:
         return {"general": 0, "individual": 0}
@@ -429,6 +522,9 @@ async def startup_event() -> None:
     await master_db.users.create_index("student_id")
     await master_db.branches.create_index("id", unique=True)
     await master_db.branches.create_index("db_name", unique=True)
+    await master_db.login_attempts.create_index("ts")
+    await master_db.account_locks.create_index("username", unique=True)
+    await master_db.security_alerts.create_index([("status", 1), ("created_at", -1)])
 
     branch = await master_db.branches.find_one({}, {"_id": 0})
     if not branch:
@@ -509,9 +605,16 @@ async def create_lead(payload: LeadCreate) -> Dict[str, str]:
 
 
 @app.post("/api/auth/login")
-async def login(payload: LoginRequest) -> Dict[str, Any]:
+async def login(payload: LoginRequest, request: Request) -> Dict[str, Any]:
     username = payload.username.strip().lower()
     branch_id = payload.branch_id
+
+    remaining_lock_seconds = await check_account_lock(username)
+    if remaining_lock_seconds:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Слишком много попыток входа. Повторите через {remaining_lock_seconds} сек.",
+        )
 
     user = None
     if branch_id:
@@ -526,7 +629,42 @@ async def login(payload: LoginRequest) -> Dict[str, Any]:
             user = users[0] if users else None
 
     if not user or not pwd_context.verify(payload.password, user["password_hash"]):
+        await record_login_attempt(
+            username=username,
+            success=False,
+            branch_id=user.get("branch_id") if user else None,
+            role=user.get("role", "unknown") if user else "unknown",
+            request=request,
+        )
+
+        current_ts = now_ts()
+        cutoff_ts = current_ts - FAILED_ATTEMPTS_WINDOW_SECONDS
+        failures = await master_db.login_attempts.count_documents(
+            {"username": username, "success": False, "ts": {"$gte": cutoff_ts}}
+        )
+        await master_db.login_attempts.delete_many({"ts": {"$lt": current_ts - 86400}})
+
+        if failures >= MAX_FAILED_ATTEMPTS:
+            await lock_account_and_alert(
+                username=username,
+                branch_id=user.get("branch_id") if user else None,
+                role=user.get("role", "unknown") if user else "unknown",
+            )
+            raise HTTPException(
+                status_code=429,
+                detail="Аккаунт временно заблокирован из-за большого числа неудачных попыток.",
+            )
+
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+
+    await record_login_attempt(
+        username=username,
+        success=True,
+        branch_id=user.get("branch_id"),
+        role=user.get("role", "unknown"),
+        request=request,
+    )
+    await master_db.account_locks.delete_one({"username": username})
 
     token = create_token(user)
     return {
@@ -559,6 +697,47 @@ async def admin_branches(user: Dict[str, Any] = Depends(require_roles("superadmi
     if user.get("role") == "admin" and user.get("branch_id"):
         branches = [b for b in branches if b["id"] == user["branch_id"]]
     return sorted(branches, key=lambda item: item["name"])
+
+
+@app.get("/api/admin/security-alerts")
+async def list_security_alerts(
+    branch_id: str = Query(...),
+    status_filter: Optional[str] = Query("new"),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> List[Dict[str, Any]]:
+    assert_branch_access(user, branch_id)
+    query: Dict[str, Any] = {}
+    if status_filter and status_filter != "all":
+        query["status"] = status_filter
+
+    if user.get("role") == "superadmin":
+        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}]
+    else:
+        query["branch_id"] = branch_id
+
+    alerts = await master_db.security_alerts.find(query, {"_id": 0}).to_list(length=500)
+    return sorted(alerts, key=lambda item: item.get("last_seen_at", item["created_at"]), reverse=True)
+
+
+@app.post("/api/admin/security-alerts/{alert_id}/ack")
+async def ack_security_alert(
+    alert_id: str,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    alert = await master_db.security_alerts.find_one({"id": alert_id}, {"_id": 0})
+    if not alert:
+        raise HTTPException(status_code=404, detail="Оповещение не найдено")
+
+    if user.get("role") != "superadmin" and alert.get("branch_id") != branch_id:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    await master_db.security_alerts.update_one(
+        {"id": alert_id},
+        {"$set": {"status": "ack", "ack_at": now_iso(), "ack_by": user.get("username", "admin")}},
+    )
+    return {"message": "Оповещение подтверждено"}
 
 
 @app.put("/api/admin/branches/{branch_id}")

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { api, authConfig } from "../lib/api";
 
 const TABS = [
   { id: "overview", label: "Обзор", icon: ShieldCheck },
+  { id: "security", label: "Безопасность", icon: AlertTriangle },
   { id: "branches", label: "Филиалы", icon: Building2 },
   { id: "site", label: "Редактор сайта", icon: Palette },
   { id: "leads", label: "Желающие", icon: Users },
@@ -76,6 +77,7 @@ export default function AdminDashboardPage() {
   const [branchDrafts, setBranchDrafts] = useState({});
 
   const [siteDraft, setSiteDraft] = useState(defaultSiteDraft);
+  const [securityAlerts, setSecurityAlerts] = useState([]);
   const [leads, setLeads] = useState([]);
   const [graduates, setGraduates] = useState([]);
   const [students, setStudents] = useState([]);
@@ -106,6 +108,7 @@ export default function AdminDashboardPage() {
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [securityStatusFilter, setSecurityStatusFilter] = useState("new");
   const [graduateSearchQuery, setGraduateSearchQuery] = useState("");
   const [selectedGraduateIds, setSelectedGraduateIds] = useState([]);
   const [adminCredentialsForm, setAdminCredentialsForm] = useState({
@@ -156,6 +159,7 @@ export default function AdminDashboardPage() {
     if (!selectedBranchId) return;
     const requests = [
       api.get("/api/admin/site-settings", withBranch()),
+      api.get("/api/admin/security-alerts", { ...withBranch(), params: { branch_id: selectedBranchId, status_filter: securityStatusFilter } }),
       api.get("/api/admin/leads", withBranch()),
       api.get("/api/admin/graduates", withBranch()),
       api.get("/api/admin/students", withBranch()),
@@ -166,9 +170,10 @@ export default function AdminDashboardPage() {
       api.get("/api/admin/schedule-settings", withBranch()),
     ];
 
-    const [site, leadsRes, graduatesRes, studentsRes, teachersRes, classRes, groupsRes, schedulesRes, configRes] = await Promise.all(requests);
+    const [site, securityRes, leadsRes, graduatesRes, studentsRes, teachersRes, classRes, groupsRes, schedulesRes, configRes] = await Promise.all(requests);
     setSiteDraft(site.data);
     applyTheme(site.data.colors);
+    setSecurityAlerts(securityRes.data);
     setLeads(leadsRes.data);
     setGraduates(graduatesRes.data);
     setStudents(studentsRes.data);
@@ -189,7 +194,7 @@ export default function AdminDashboardPage() {
     setSelectedLeadIds([]);
     setSelectedGraduateIds([]);
     loadBranchData().catch(() => toast.error("Не удалось загрузить данные филиала"));
-  }, [selectedBranchId]);
+  }, [selectedBranchId, securityStatusFilter]);
 
   useEffect(() => {
     const nextDrafts = {};
@@ -223,6 +228,13 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     setAdminCredentialsForm((prev) => ({ ...prev, new_username: user?.username || prev.new_username }));
   }, [user?.username]);
+
+  useEffect(() => {
+    const freshAlerts = securityAlerts.filter((item) => item.status === "new");
+    if (freshAlerts.length > 0) {
+      toast.error(`Внимание: зафиксированы попытки перебора пароля (${freshAlerts.length})`);
+    }
+  }, [securityAlerts]);
 
   const createBranch = async () => {
     if (!newBranch.name || !newBranch.location) {
@@ -280,6 +292,16 @@ export default function AdminDashboardPage() {
       toast.success("Изменения сайта сохранены");
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Не удалось сохранить");
+    }
+  };
+
+  const ackSecurityAlert = async (alertId) => {
+    try {
+      await api.post(`/api/admin/security-alerts/${alertId}/ack`, {}, withBranch());
+      await loadBranchData();
+      toast.success("Оповещение подтверждено");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Ошибка подтверждения оповещения");
     }
   };
 
@@ -727,6 +749,7 @@ export default function AdminDashboardPage() {
   ]);
 
   const overviewStats = {
+    security: securityAlerts.filter((item) => item.status === "new").length,
     leads: leads.filter((item) => item.status === "pending").length,
     students: students.length,
     teachers: teachers.length,
@@ -882,6 +905,10 @@ export default function AdminDashboardPage() {
           <section className="card" data-testid="overview-tab-content">
             <h2 data-testid="overview-title">Обзор филиала</h2>
             <div className="metrics-grid">
+              <div className="metric-card" data-testid="overview-security-alerts-card">
+                <strong>{overviewStats.security}</strong>
+                <span>Оповещения безопасности</span>
+              </div>
               <div className="metric-card" data-testid="overview-pending-leads-card">
                 <strong>{overviewStats.leads}</strong>
                 <span>Новые заявки</span>
@@ -902,6 +929,66 @@ export default function AdminDashboardPage() {
                 <strong>{overviewStats.schedules}</strong>
                 <span>Занятия</span>
               </div>
+            </div>
+
+            {securityAlerts.length > 0 && (
+              <div className="table-like" data-testid="overview-security-alerts-list">
+                {securityAlerts.slice(0, 5).map((alert) => (
+                  <div key={alert.id} className="row" data-testid={`overview-security-alert-${alert.id}`}>
+                    <span data-testid={`overview-security-alert-user-${alert.id}`}>{alert.username}</span>
+                    <span data-testid={`overview-security-alert-message-${alert.id}`}>{alert.message}</span>
+                    <span data-testid={`overview-security-alert-status-${alert.id}`}>{alert.status}</span>
+                    {alert.status === "new" && (
+                      <button
+                        className="primary-btn"
+                        onClick={() => ackSecurityAlert(alert.id)}
+                        data-testid={`overview-security-alert-ack-${alert.id}`}
+                      >
+                        Принять
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "security" && (
+          <section className="card" data-testid="security-tab-content">
+            <h2 data-testid="security-tab-title">Оповещения о переборе паролей</h2>
+            <div className="inline-form" data-testid="security-controls-row">
+              <select
+                value={securityStatusFilter}
+                onChange={(event) => setSecurityStatusFilter(event.target.value)}
+                data-testid="security-status-filter-select"
+              >
+                <option value="new">Новые</option>
+                <option value="ack">Подтвержденные</option>
+                <option value="all">Все</option>
+              </select>
+            </div>
+
+            <div className="table-like" data-testid="security-alerts-table">
+              {securityAlerts.map((alert) => (
+                <div key={alert.id} className="row" data-testid={`security-alert-row-${alert.id}`}>
+                  <span data-testid={`security-alert-username-${alert.id}`}>{alert.username}</span>
+                  <span data-testid={`security-alert-role-${alert.id}`}>{alert.role}</span>
+                  <span data-testid={`security-alert-count-${alert.id}`}>Срабатываний: {alert.count}</span>
+                  <span data-testid={`security-alert-time-${alert.id}`}>{(alert.last_seen_at || alert.created_at || "").slice(0, 19)}</span>
+                  <span data-testid={`security-alert-status-${alert.id}`}>{alert.status}</span>
+                  {alert.status === "new" && (
+                    <button
+                      className="primary-btn"
+                      onClick={() => ackSecurityAlert(alert.id)}
+                      data-testid={`security-alert-ack-${alert.id}`}
+                    >
+                      Подтвердить
+                    </button>
+                  )}
+                </div>
+              ))}
+              {securityAlerts.length === 0 && <div data-testid="security-empty-state">Новых оповещений нет</div>}
             </div>
           </section>
         )}
