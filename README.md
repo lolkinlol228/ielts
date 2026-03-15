@@ -4,6 +4,10 @@
 - Backend: FastAPI + MongoDB
 - Frontend: React (Vite)
 
+## Self-host на Debian (ваш сервер + ваш домен)
+- Полная инструкция: `SELF_HOSTING_DEBIAN.md`
+- Готовые файлы деплоя: `deploy/docker-compose.yml` и `deploy/.env.example`
+
 ---
 
 ## Быстрый запуск на Windows
