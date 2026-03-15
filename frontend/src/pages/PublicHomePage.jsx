@@ -193,7 +193,7 @@ export default function PublicHomePage() {
   const mapCenter = mapLocations[0] ? [mapLocations[0].lat, mapLocations[0].lng] : [43.238949, 76.889709];
 
   return (
-    <div className="public-page" data-testid="public-page-root">
+    <div className="public-page" data-testid="public-home-page">
       <header className="top-header" data-testid="public-top-header">
         <div className="container nav-grid">
           <div className="brand-block" data-testid="header-brand-block">
