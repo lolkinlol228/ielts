@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, MapPin, MessageCircle, Phone, Languages, CalendarDays } from "lucide-react";
+import { Facebook, Instagram, MapPin, MessageCircle, Phone, Languages, CalendarDays, Send, Play, Linkedin, Twitter } from "lucide-react";
 import { toast } from "sonner";
 import L from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
@@ -145,12 +145,12 @@ export default function PublicHomePage() {
   };
 
   useEffect(() => {
-    loadBranches().catch(() => toast.error("Не удалось загрузить филиалы"));
+    loadBranches().catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!publicBranchId) return;
-    loadPublicData(publicBranchId).catch(() => toast.error("Не удалось загрузить сайт"));
+    loadPublicData(publicBranchId).catch(() => {});
   }, [publicBranchId]);
 
   const submitLead = async (event) => {
@@ -192,10 +192,31 @@ export default function PublicHomePage() {
   );
   const mapCenter = mapLocations[0] ? [mapLocations[0].lat, mapLocations[0].lng] : [43.238949, 76.889709];
 
+  const SocialIcon = ({ platform, url }) => {
+    if (!url) return null;
+    const icons = {
+      instagram: Instagram,
+      facebook: Facebook,
+      whatsapp: MessageCircle,
+      telegram: Send,
+      tiktok: Play,
+      youtube: Play,
+      linkedin: Linkedin,
+      twitter: Twitter,
+    };
+    const Icon = icons[platform];
+    if (!Icon) return null;
+    return (
+      <a href={url} target="_blank" rel="noreferrer" data-testid={`social-${platform}-link`}>
+        <Icon size={15} />
+      </a>
+    );
+  };
+
   return (
     <div className="public-page" data-testid="public-home-page">
       <header className="top-header" data-testid="public-top-header">
-        <div className="container nav-grid">
+        <div className="container header-row">
           <div className="brand-block" data-testid="header-brand-block">
             <img
               src={settings?.logo_url || defaultImages.classroom}
@@ -217,8 +238,19 @@ export default function PublicHomePage() {
           </nav>
 
           <div className="right-actions" data-testid="header-right-actions">
+            <div className="social-icons" data-testid="header-social-icons">
+              {Object.entries(social).map(([platform, url]) => (
+                <SocialIcon key={platform} platform={platform} url={url} />
+              ))}
+            </div>
+
+            <span className="header-divider" />
+
+            <span className="phone-line" data-testid="header-phone-number">
+              <Phone size={14} /> {settings?.phone || "+7 (700) 000-00-00"}
+            </span>
+
             <div className="lang-switch" data-testid="language-switcher">
-              <Languages size={16} />
               {LANGS.map((item) => (
                 <button
                   key={item.code}
@@ -231,28 +263,12 @@ export default function PublicHomePage() {
               ))}
             </div>
 
-            <div className="social-icons" data-testid="header-social-icons">
-              <a href={social.instagram || "#"} target="_blank" rel="noreferrer" data-testid="social-instagram-link">
-                <Instagram size={16} />
-              </a>
-              <a href={social.facebook || "#"} target="_blank" rel="noreferrer" data-testid="social-facebook-link">
-                <Facebook size={16} />
-              </a>
-              <a href={social.whatsapp || "#"} target="_blank" rel="noreferrer" data-testid="social-whatsapp-link">
-                <MessageCircle size={16} />
-              </a>
-            </div>
-
-            <span className="phone-line" data-testid="header-phone-number">
-              <Phone size={16} /> {settings?.phone || "+7 (700) 000-00-00"}
-            </span>
-
             {isAuthenticated && user?.role === "student" ? (
-              <Link to="/student/schedule" className="primary-btn" data-testid="student-schedule-nav-button">
-                <CalendarDays size={16} /> {text.schedule}
+              <Link to="/student/schedule" className="primary-btn header-cta-btn" data-testid="student-schedule-nav-button">
+                <CalendarDays size={15} /> {text.schedule}
               </Link>
             ) : (
-              <Link to="/login" className="primary-btn" data-testid="header-login-button">
+              <Link to="/login" className="primary-btn header-cta-btn" data-testid="header-login-button">
                 {text.login}
               </Link>
             )}
@@ -436,15 +452,9 @@ export default function PublicHomePage() {
           </div>
 
           <div className="social-icons" data-testid="footer-social-icons">
-            <a href={social.instagram || "#"} target="_blank" rel="noreferrer" data-testid="footer-social-instagram-link">
-              <Instagram size={16} />
-            </a>
-            <a href={social.facebook || "#"} target="_blank" rel="noreferrer" data-testid="footer-social-facebook-link">
-              <Facebook size={16} />
-            </a>
-            <a href={social.whatsapp || "#"} target="_blank" rel="noreferrer" data-testid="footer-social-whatsapp-link">
-              <MessageCircle size={16} />
-            </a>
+            {Object.entries(social).map(([platform, url]) => (
+              <SocialIcon key={`footer-${platform}`} platform={platform} url={url} />
+            ))}
           </div>
 
           <a href="#" className="offer-link" data-testid="footer-offer-link">

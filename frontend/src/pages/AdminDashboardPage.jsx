@@ -23,7 +23,7 @@ const defaultSiteDraft = {
   brand_name: "IELTS Center",
   logo_url: "",
   phone: "",
-  social_links: { instagram: "", facebook: "", whatsapp: "" },
+  social_links: { instagram: "", facebook: "", whatsapp: "", telegram: "", tiktok: "", youtube: "", linkedin: "", twitter: "" },
   colors: {
     primary: "#1e3a8a",
     secondary: "#4b5563",
@@ -1151,6 +1151,71 @@ export default function AdminDashboardPage() {
                   data-testid="site-editor-whatsapp-input"
                 />
               </div>
+              <div>
+                <label data-testid="site-editor-telegram-label">Telegram</label>
+                <input
+                  value={siteDraft.social_links?.telegram || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, telegram: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-telegram-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-tiktok-label">TikTok</label>
+                <input
+                  value={siteDraft.social_links?.tiktok || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, tiktok: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-tiktok-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-youtube-label">YouTube</label>
+                <input
+                  value={siteDraft.social_links?.youtube || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, youtube: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-youtube-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-linkedin-label">LinkedIn</label>
+                <input
+                  value={siteDraft.social_links?.linkedin || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, linkedin: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-linkedin-input"
+                />
+              </div>
+              <div>
+                <label data-testid="site-editor-twitter-label">X (Twitter)</label>
+                <input
+                  value={siteDraft.social_links?.twitter || ""}
+                  onChange={(event) =>
+                    setSiteDraft((prev) => ({
+                      ...prev,
+                      social_links: { ...prev.social_links, twitter: event.target.value },
+                    }))
+                  }
+                  data-testid="site-editor-twitter-input"
+                />
+              </div>
             </div>
 
             <h3 data-testid="site-editor-colors-title">Глобальные цвета</h3>
@@ -1724,7 +1789,7 @@ export default function AdminDashboardPage() {
           <section className="card" data-testid="groups-tab-content">
             <h2 data-testid="groups-title">Группы, индивидуальные занятия и переводы</h2>
 
-            <div className="form-grid">
+            <div className="group-create-form" data-testid="group-create-form-row">
               <input
                 placeholder="Префикс (например ielts)"
                 value={groupForm.prefix}
@@ -1752,7 +1817,7 @@ export default function AdminDashboardPage() {
                   onChange={(event) => setGroupForm((prev) => ({ ...prev, is_individual: event.target.checked }))}
                   data-testid="group-individual-toggle"
                 />
-                Индивидуальная группа
+                Инд. группа
               </label>
               <button className="primary-btn" onClick={addGroup} data-testid="group-create-button">
                 Создать группу

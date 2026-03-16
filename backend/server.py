@@ -174,6 +174,11 @@ def build_default_site_settings(brand_name: str) -> Dict[str, Any]:
             "instagram": "https://instagram.com",
             "facebook": "https://facebook.com",
             "whatsapp": "https://wa.me/77000000000",
+            "telegram": "",
+            "tiktok": "",
+            "youtube": "",
+            "linkedin": "",
+            "twitter": "",
         },
         "colors": {
             "primary": "#1e3a8a",
