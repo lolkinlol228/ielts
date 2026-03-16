@@ -90,8 +90,8 @@ const STATIC_TEXT = {
 };
 
 const defaultImages = {
-  hero: "https://images.unsplash.com/photo-1741699428553-41c8e5bd894d?crop=entropy&cs=srgb&fm=jpg&q=85",
-  classroom: "https://images.unsplash.com/photo-1758685848174-e061c6486651?crop=entropy&cs=srgb&fm=jpg&q=85",
+  hero: "https://images.unsplash.com/photo-1758270705639-9727f350f026?crop=entropy&cs=srgb&fm=jpg&q=85",
+  classroom: "https://images.unsplash.com/photo-1772431176124-d0e3d2a78aed?crop=entropy&cs=srgb&fm=jpg&q=85",
   success: "https://images.unsplash.com/photo-1758270703124-b65dce9a2bec?crop=entropy&cs=srgb&fm=jpg&q=85",
 };
 
