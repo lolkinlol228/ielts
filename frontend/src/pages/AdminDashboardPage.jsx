@@ -308,7 +308,7 @@ export default function AdminDashboardPage() {
   const approveLead = async (leadId) => {
     try {
       const response = await api.post(`/api/admin/leads/${leadId}/approve`, {}, withBranch());
-      toast.success(`Логин: ${response.data.username}, пароль: ${response.data.password}`);
+      toast.success(response.data.message || "Заявка подтверждена");
       await loadBranchData();
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Ошибка подтверждения");
@@ -550,9 +550,15 @@ export default function AdminDashboardPage() {
       return;
     }
     try {
-      await api.post(`/api/admin/groups/${assignForm.group_id}/students/${assignForm.student_id}`, {}, withBranch());
+      const response = await api.post(`/api/admin/groups/${assignForm.group_id}/students/${assignForm.student_id}`, {}, withBranch());
       await loadBranchData();
-      toast.success("Ученик добавлен в группу");
+      if (response.data?.password) {
+        toast.success(`Логин: ${response.data.username}, пароль: ${response.data.password}`);
+      } else if (response.data?.username) {
+        toast.success(`Логин обновлен: ${response.data.username}. Пароль сохранен прежний`);
+      } else {
+        toast.success("Ученик добавлен в группу");
+      }
     } catch {
       toast.error("Ошибка привязки ученика");
     }
@@ -564,12 +570,18 @@ export default function AdminDashboardPage() {
       return;
     }
     try {
-      await api.post(`/api/admin/students/${transferForm.student_id}/transfer`, {
+      const response = await api.post(`/api/admin/students/${transferForm.student_id}/transfer`, {
         from_group_id: transferForm.from_group_id,
         to_group_id: transferForm.to_group_id,
       }, withBranch());
       await loadBranchData();
-      toast.success("Перевод выполнен");
+      if (response.data?.password) {
+        toast.success(`Перевод выполнен. Новый логин: ${response.data.username}, новый пароль: ${response.data.password}`);
+      } else if (response.data?.username) {
+        toast.success(`Перевод выполнен. Новый логин: ${response.data.username}, пароль сохранен`);
+      } else {
+        toast.success("Перевод выполнен");
+      }
     } catch {
       toast.error("Ошибка перевода");
     }

@@ -98,6 +98,72 @@ def random_username(name: str) -> str:
     return f"{base}{random.randint(100, 999)}"
 
 
+async def generate_group_login(branch_id: str, group_name: str) -> str:
+    safe_group = re.sub(r"[^a-zA-Z0-9\-]", "", group_name.strip().lower()) or "group"
+    for _ in range(2000):
+        suffix = random.randint(0, 999)
+        candidate = f"{safe_group}-{suffix:03d}"
+        existing = await master_db.users.find_one({"branch_id": branch_id, "username": candidate}, {"_id": 0})
+        if not existing:
+            return candidate
+    raise HTTPException(status_code=500, detail="Не удалось сгенерировать логин для группы")
+
+
+async def provision_or_update_student_auth(
+    branch_id: str,
+    student_id: str,
+    student_full_name: str,
+    target_group_name: str,
+) -> Dict[str, Any]:
+    user = await master_db.users.find_one({"branch_id": branch_id, "student_id": student_id, "role": "student"}, {"_id": 0})
+    generated_login = await generate_group_login(branch_id, target_group_name)
+
+    if not user:
+        generated_password = generated_login
+        doc = {
+            "id": str(uuid.uuid4()),
+            "role": "student",
+            "branch_id": branch_id,
+            "student_id": student_id,
+            "full_name": student_full_name,
+            "username": generated_login,
+            "password_hash": pwd_context.hash(generated_password),
+            "password_customized": False,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        await master_db.users.insert_one(doc)
+        return {
+            "username": generated_login,
+            "password": generated_password,
+            "password_changed": True,
+            "created": True,
+        }
+
+    password_customized = bool(user.get("password_customized"))
+    update_doc: Dict[str, Any] = {
+        "username": generated_login,
+        "full_name": student_full_name,
+        "updated_at": now_iso(),
+    }
+    generated_password: Optional[str] = None
+    password_changed = False
+
+    if not password_customized:
+        generated_password = generated_login
+        update_doc["password_hash"] = pwd_context.hash(generated_password)
+        update_doc["password_customized"] = False
+        password_changed = True
+
+    await master_db.users.update_one({"id": user["id"]}, {"$set": update_doc})
+    return {
+        "username": generated_login,
+        "password": generated_password,
+        "password_changed": password_changed,
+        "created": False,
+    }
+
+
 def build_default_site_settings(brand_name: str) -> Dict[str, Any]:
     return {
         "key": "site",
@@ -326,6 +392,12 @@ class LeadApproveInput(BaseModel):
 class StudentCredentialsInput(BaseModel):
     username: str
     password: str
+
+
+class StudentPasswordChangeInput(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
 
 
 class TransferInput(BaseModel):
@@ -917,28 +989,14 @@ async def approve_lead(
     }
     await branch_db.students.insert_one(student)
 
-    username = (payload.username or random_username(lead["full_name"])).lower()
-    password = payload.password or random_password(8)
-    existing = await master_db.users.find_one({"username": username}, {"_id": 0})
-    if existing:
-        username = f"{username}{random.randint(10,99)}"
-
-    student_user = {
-        "id": str(uuid.uuid4()),
-        "role": "student",
-        "branch_id": branch_id,
-        "student_id": student_id,
-        "full_name": lead["full_name"],
-        "username": username,
-        "password_hash": pwd_context.hash(password),
-        "created_at": now_iso(),
-    }
-    await master_db.users.insert_one(student_user)
     await branch_db.leads.update_one(
         {"id": lead_id},
         {"$set": {"status": "approved", "student_id": student_id, "approved_at": now_iso()}},
     )
-    return {"message": "Заявка подтверждена", "student_id": student_id, "username": username, "password": password}
+    return {
+        "message": "Заявка подтверждена. Логин/пароль будут сгенерированы после добавления ученика в группу",
+        "student_id": student_id,
+    }
 
 
 @app.post("/api/admin/leads/{lead_id}/reject")
@@ -1008,6 +1066,8 @@ async def update_student_credentials(
                 "username": payload.username.lower(),
                 "password_hash": pwd_context.hash(payload.password),
                 "full_name": student["full_name"],
+                "password_customized": True,
+                "updated_at": now_iso(),
             },
             "$setOnInsert": {
                 "id": str(uuid.uuid4()),
@@ -1203,7 +1263,7 @@ async def assign_student_to_group(
     student_id: str,
     branch_id: str = Query(...),
     user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     assert_branch_access(user, branch_id)
     branch_db = await get_branch_db(branch_id)
     group = await branch_db.groups.find_one({"id": group_id}, {"_id": 0})
@@ -1221,7 +1281,19 @@ async def assign_student_to_group(
 
     await branch_db.groups.update_one({"id": group_id}, {"$addToSet": {"student_ids": student_id}})
     await branch_db.students.update_one({"id": student_id}, {"$addToSet": {"group_ids": group_id}})
-    return {"message": "Студент добавлен в группу"}
+
+    auth_payload = await provision_or_update_student_auth(
+        branch_id=branch_id,
+        student_id=student_id,
+        student_full_name=student["full_name"],
+        target_group_name=group["name"],
+    )
+    return {
+        "message": "Студент добавлен в группу",
+        "username": auth_payload["username"],
+        "password": auth_payload["password"],
+        "password_changed": auth_payload["password_changed"],
+    }
 
 
 @app.post("/api/admin/students/{student_id}/transfer")
@@ -1230,7 +1302,7 @@ async def transfer_student(
     payload: TransferInput,
     branch_id: str = Query(...),
     user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     assert_branch_access(user, branch_id)
     if payload.from_group_id == payload.to_group_id:
         raise HTTPException(status_code=400, detail="Группа назначения должна отличаться")
@@ -1252,7 +1324,19 @@ async def transfer_student(
     await branch_db.groups.update_one({"id": payload.to_group_id}, {"$addToSet": {"student_ids": student_id}})
     await branch_db.students.update_one({"id": student_id}, {"$pull": {"group_ids": payload.from_group_id}})
     await branch_db.students.update_one({"id": student_id}, {"$addToSet": {"group_ids": payload.to_group_id}})
-    return {"message": "Студент переведен"}
+
+    auth_payload = await provision_or_update_student_auth(
+        branch_id=branch_id,
+        student_id=student_id,
+        student_full_name=student["full_name"],
+        target_group_name=to_group["name"],
+    )
+    return {
+        "message": "Студент переведен",
+        "username": auth_payload["username"],
+        "password": auth_payload["password"],
+        "password_changed": auth_payload["password_changed"],
+    }
 
 
 @app.post("/api/admin/groups/{group_id}/graduate")
@@ -1626,6 +1710,36 @@ async def student_schedule(user: Dict[str, Any] = Depends(require_roles("student
         },
         "schedule": grouped,
     }
+
+
+@app.put("/api/student/change-password")
+async def student_change_password(
+    payload: StudentPasswordChangeInput,
+    user: Dict[str, Any] = Depends(require_roles("student")),
+) -> Dict[str, str]:
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Новый пароль и подтверждение не совпадают")
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Пароль должен быть не короче 6 символов")
+
+    db_user = await master_db.users.find_one({"id": user["id"], "role": "student"}, {"_id": 0})
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if not pwd_context.verify(payload.current_password, db_user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Текущий пароль неверный")
+
+    await master_db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "password_hash": pwd_context.hash(payload.new_password),
+                "password_customized": True,
+                "updated_at": now_iso(),
+            }
+        },
+    )
+    return {"message": "Пароль успешно изменен"}
 
 
 @app.put("/api/admin/me/credentials")
