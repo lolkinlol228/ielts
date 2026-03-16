@@ -559,6 +559,9 @@ textarea {
   display: grid;
   gap: 0.5rem;
   align-content: start;
+  max-height: calc(100vh - 210px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
 .tab-btn {
@@ -570,6 +573,7 @@ textarea {
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
+  text-align: left;
 }
 
 .tab-btn.active {
@@ -617,6 +621,18 @@ textarea {
 .card h3 {
   margin-top: 0;
   font-family: "Outfit", sans-serif;
+}
+
+[data-testid="admin-context-help-card"] p {
+  margin: 0.25rem 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+[data-testid="admin-context-next-step"] {
+  margin-top: 0.6rem !important;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .inline-form,
