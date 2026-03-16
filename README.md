@@ -8,6 +8,13 @@
 - Полная инструкция: `SELF_HOSTING_DEBIAN.md`
 - Готовые файлы деплоя: `deploy/docker-compose.yml` и `deploy/.env.example`
 
+## Windows (автозапуск bat + troubleshooting)
+- Полная инструкция: `WINDOWS_RUNBOOK.md`
+- Автозапуск: `windows/start_project.bat`
+- Отдельно backend: `windows/start_backend.bat`
+- Отдельно frontend: `windows/start_frontend.bat`
+- Остановка: `windows/stop_project.bat`
+
 ---
 
 ## Быстрый запуск на Windows

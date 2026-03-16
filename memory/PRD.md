@@ -42,6 +42,7 @@
   - Безопасность входа: защита от brute-force (временная блокировка после неудачных попыток).
   - Безопасность: отдельные оповещения администратору о попытках перебора паролей (вкладка «Безопасность» + подтверждение alert).
 - Self-host readiness: добавлены Dockerfile для backend/frontend, compose-конфиг `deploy/docker-compose.yml`, шаблон env и отдельная инструкция `SELF_HOSTING_DEBIAN.md` для запуска на своём Debian сервере под собственным доменом.
+  - Windows readiness: добавлены bat-скрипты автозапуска/остановки (`windows/start_project.bat`, `start_backend.bat`, `start_frontend.bat`, `stop_project.bat`) и полный runbook `WINDOWS_RUNBOOK.md` с типовыми ошибками и их решениями.
 - Кабинет студента: страница расписания по дням недели после входа.
 - Исправлен критический баг transfer (Mongo conflict при `$pull` + `$addToSet` в одном update).
 

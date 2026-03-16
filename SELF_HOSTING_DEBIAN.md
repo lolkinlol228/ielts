@@ -63,3 +63,41 @@ docker cp ielts-mongodb:/tmp/backup.archive ./backup.archive
 ## 8) HTTPS (рекомендуется)
 Самый простой путь: поставить Nginx/Caddy как внешний reverse-proxy и выпустить Let's Encrypt сертификат.
 Если хотите, подготовлю готовый `Caddyfile` или `nginx` конфиг под ваш домен.
+
+---
+
+## Частые проблемы и решения (Debian)
+
+### 1) `docker: command not found`
+```bash
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+### 2) Backend не видит MongoDB
+Проверьте сервисы:
+```bash
+cd deploy
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f mongodb
+```
+
+### 3) Порт 80 занят
+Найдите процесс:
+```bash
+sudo ss -tulpn | grep :80
+```
+Остановите конфликтующий nginx/apache или измените mapping порта в `docker-compose.yml`.
+
+### 4) После `git pull` изменения не применились
+```bash
+cd deploy
+docker compose down
+docker compose up -d --build
+```
+
+### 5) Ошибки домена/SSL
+- Проверьте DNS A-запись на IP сервера.
+- Убедитесь, что открыты порты 80/443.
+- Проверьте прокси-конфиг (Nginx/Caddy).
