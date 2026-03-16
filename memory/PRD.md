@@ -1,59 +1,57 @@
 # PRD — IELTS Center Platform (MVP v2 + UI/UX Redesign)
 
 ## 1) Оригинальный запрос пользователя
-Построить серьёзный минималистичный и современный IELTS-сайт с публичной страницей (hero, о нас, программа, успехи, отзывы, заявка, футер), мультиязычностью RU/EN/KK, входом, админ-панелью и мультифилиалами. В админке: менять название/лого/цвета/тексты сайта, обрабатывать заявки, вести учеников/преподавателей/классы, управлять группами, переводить между группами, вести индивидуальные занятия как отдельные группы, настраивать и создавать расписание с автослотами и проверкой конфликтов, а студентам показывать личное расписание после входа.
+Построить серьёзный минималистичный и современный IELTS-сайт с публичной страницей (hero, о нас, программа, успехи, отзывы, заявка, футер), мультиязычностью RU/EN/KK, входом, админ-панелью и мультифилиалами.
 
-### UI/UX Redesign Request (2026-03-16)
-Улучшить дизайн UI/UX: светлая тема, modern glassmorphism + строгий корпоративный стиль, синие оттенки, полный редизайн всего приложения. Функционал сохранить, упростить и облегчить где возможно.
+### UI/UX Redesign v1 (2026-03-16)
+Светлая тема, modern glassmorphism + строгий корпоративный стиль, синие оттенки, полный редизайн.
 
-## 2) Архитектурные решения
-- **Стек**: FastAPI + MongoDB (Motor) + React (Vite) + React Router + Axios + Sonner + Lucide + React-Leaflet.
+### UI/UX Fix v2 (2026-03-16)
+- Убрать toast ошибки для публичных посетителей
+- Добавить все соц.сети (Telegram, TikTok, YouTube, LinkedIn, Twitter)
+- Хэдер — компактная одна строка (flex)
+- Чекбокс "Инд. группа" — inline в строку с инпутами
+- Улучшить расположение элементов
+
+## 2) Архитектура
+- **Стек**: FastAPI + MongoDB (Motor) + React (Vite)
 - **Шрифты**: Plus Jakarta Sans (body), Outfit (headings), JetBrains Mono (code)
-- **Дизайн-система**: CSS variables, glassmorphism (backdrop-filter blur), синяя корпоративная палитра
-- **Мультифилиалы**: master DB + per-branch MongoDB
-- **RBAC**: superadmin, student (+ admin в API)
+- **Дизайн**: CSS variables, glassmorphism (backdrop-filter blur), синяя корпоративная палитра
 
 ## 3) Что реализовано
 
 ### UI/UX Redesign (2026-03-16):
-- Полная переработка index.css: glassmorphism карточки, корпоративная синяя палитра (#1e40af)
-- Увеличенное spacing (2-3x), gradient кнопки с box-shadow, smooth transitions
-- Обновлённая страница логина: glassmorphism карточка + градиентный фон с radial blob-эффектами
-- Hero с gradient overlay (синий/тёмный), новые hero-изображения
-- Alternating секции (белый → #eff6ff)
-- Admin dashboard: glass sidebar, glow на активных вкладках, организованные формы
-- Student page: glass карточки с blue left border для уроков
+- Полная переработка index.css: glassmorphism, синяя палитра (#1e40af), generous spacing
+- Gradient кнопки, smooth transitions, кастомные скроллбары
+- Login: glassmorphism карточка + градиентный фон с radial blob-эффектами
+- Hero: gradient overlay, новые hero-изображения
+- Admin: glass sidebar, glow вкладки, организованные формы
 - Модальные окна: backdrop blur + scale-in анимация
-- Кастомные скроллбары, hover-эффекты на всех интерактивных элементах
-- Мобильная адаптация сохранена и улучшена
 
-### Ранее реализовано:
-- Публичный лендинг IELTS Center (все секции, мультиязычность)
-- Преподаватели с карточками, карта филиалов
-- Логин-система (JWT), superadmin + студент
-- Полная админ-панель (11 вкладок)
-- Расписание с автослотами и проверкой конфликтов
-- Self-host (Docker, Debian), Windows readiness
+### UI/UX Fix v2 (2026-03-16):
+- Убрали toast.error для public посетителей (branch/settings загрузка)
+- Добавили 8 соц.сетей: Instagram, Facebook, WhatsApp, Telegram, TikTok, YouTube, LinkedIn, X (Twitter)
+- Хэдер: flex header-row (brand | nav | socials | divider | phone | lang | cta) — всё в одну строку
+- Группы: `.group-create-form` — flex inline row для prefix, number, year, checkbox, button
+- Соц.сети динамические: пустые URL скрываются автоматически
+- Admin Site Editor: все 8 соц.сетей редактируемы
 
-## 4) Backlog (приоритеты)
+## 4) Backlog
 
 ### P0
 - Роль admin по филиалам
-- Валидации форм (телефоны, дубли, time check)
-- Аудит-лог действий
+- Валидации форм
 
 ### P1
 - Scroll animations (Intersection Observer)
 - Dark mode toggle
 - Анимированные счётчики метрик
-- Фильтры и поиск в админке
 
 ### P2
-- Разделение backend на routers/services
 - Экспорт CSV/PDF
 - Уведомления студентам
 
 ## 5) Следующие шаги
-1. Scroll-to-top кнопка + анимированные метрики для увеличения конверсии
+1. Scroll-to-top кнопка + анимированные метрики
 2. Филиальные админы
 3. Dark mode toggle
