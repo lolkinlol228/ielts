@@ -1,143 +1,133 @@
 {
-  "project_name": "IELTS Center Platform",
-  "app_type": "hybrid_fullstack",
-  "design_philosophy": {
-    "theme": "Serious Minimalist",
-    "core_concept": "Academic Trust & Modern Efficiency",
-    "visual_style": "Swiss High-Contrast",
-    "mode": "light",
-    "emotional_archetype": "Authority & Clarity"
+  "meta": {
+    "project": "IELTS Center Redesign",
+    "persona": "E1 (Anti-AI Designer)",
+    "tone": "Swiss Utility & High Efficiency",
+    "priority": "Mobile Adaptation & Instruction Removal"
   },
   "typography": {
-    "font_strategy": "The Swiss Brutalist",
     "headings": {
-      "family": "Outfit",
-      "weights": ["600", "700"],
-      "usage": "Use for all H1-H3. Tight tracking (-0.02em). Strict hierarchy."
+      "family": "Outfit, sans-serif",
+      "weights": "font-semibold tracking-tight",
+      "sizes": {
+        "h1": "text-3xl md:text-4xl",
+        "h2": "text-xl md:text-2xl"
+      }
     },
     "body": {
-      "family": "Inter",
-      "weights": ["400", "500"],
-      "usage": "High legibility for course content and dashboards."
-    },
-    "mono": {
-      "family": "JetBrains Mono",
-      "usage": "For schedule time slots and data tables."
+      "family": "Inter, sans-serif",
+      "base": "text-sm text-slate-600 leading-relaxed"
     }
   },
   "colors": {
-    "note": "ALL colors must be implemented as CSS variables to support Admin Panel customization.",
     "palette": {
-      "primary": {
-        "variable": "--primary",
-        "default": "#1e3a8a",
-        "tailwind_name": "blue-900",
-        "description": "Deep Royal Blue. Trust, Authority, Education."
-      },
-      "secondary": {
-        "variable": "--secondary",
-        "default": "#4b5563",
-        "tailwind_name": "gray-600",
-        "description": "Neutral Slate. Subtitles, secondary actions."
-      },
-      "accent": {
-        "variable": "--accent",
-        "default": "#dc2626",
-        "tailwind_name": "red-600",
-        "description": "Academic Red. Use sparingly for 'British Council' association and critical alerts."
-      },
-      "background": {
-        "variable": "--background",
-        "default": "#ffffff",
-        "tailwind_name": "white",
-        "description": "Pure white for clarity."
-      },
-      "surface": {
-        "variable": "--surface",
-        "default": "#f9fafb",
-        "tailwind_name": "gray-50",
-        "description": "Very light gray for dashboard sections and cards."
-      },
-      "text_main": {
-        "variable": "--text-main",
-        "default": "#111827",
-        "tailwind_name": "gray-900",
-        "description": "Almost black for maximum readability."
-      }
+      "primary": "bg-blue-700 hover:bg-blue-800 text-white",
+      "danger": "bg-red-600 hover:bg-red-700 text-white",
+      "surface": "bg-slate-50",
+      "card": "bg-white",
+      "border": "border-slate-200"
+    }
+  },
+  "global_ui_rules": [
+    "Refactor all raw CSS from index.css to Tailwind utility classes.",
+    "Ensure all interactive elements have min-height 44px for touch targets.",
+    "REMOVE all 'helper' text and 'onboarding' hints from the Admin Panel as requested by the user."
+  ],
+  "components": {
+    "buttons": {
+      "primary": "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-blue-700 text-white font-medium hover:bg-blue-800 active:scale-95 transition-all shadow-sm",
+      "danger": "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-red-100 text-red-700 font-medium hover:bg-red-200 active:scale-95 transition-all",
+      "ghost": "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all"
+    },
+    "inputs": {
+      "base": "w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400",
+      "label": "block text-sm font-medium text-slate-700 mb-1.5"
+    },
+    "cards": {
+      "base": "bg-white rounded-xl border border-slate-200 shadow-sm p-6"
     }
   },
   "layout_strategies": {
-    "public_marketing": {
-      "grid_system": "Bento Grid (Mode A)",
-      "spacing": "Generous (p-12 to p-24)",
-      "container": "max-w-7xl mx-auto",
-      "alignment": "Left-aligned headings for serious tone, centered only for specific call-outs."
+    "admin_dashboard": {
+      "structure": "flex h-screen bg-slate-50 overflow-hidden",
+      "sidebar": {
+        "desktop": "hidden md:flex w-72 flex-col bg-white border-r border-slate-200 h-full",
+        "mobile": "fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out",
+        "branding": "h-16 flex items-center px-6 border-b border-slate-100",
+        "nav_list": "flex-1 overflow-y-auto py-4 px-3 space-y-1",
+        "nav_item": "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 transition-colors data-[active=true]:bg-blue-50 data-[active=true]:text-blue-700"
+      },
+      "main_content": {
+        "wrapper": "flex-1 flex flex-col h-full overflow-hidden",
+        "topbar": "h-16 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20",
+        "scroll_area": "flex-1 overflow-y-auto p-4 md:p-8 space-y-6"
+      },
+      "grid_system": {
+        "metrics": "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4",
+        "forms": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+      }
     },
-    "dashboard": {
-      "grid_system": "High Density (Mode B)",
-      "spacing": "Compact (p-4 to p-6)",
-      "navigation": "Sidebar for Admin/Student, Topbar for common actions.",
-      "card_style": "Flat, 1px border (border-gray-200), no shadow or very subtle shadow-sm."
+    "student_portal": {
+      "container": "min-h-screen bg-slate-50 p-4 md:p-8",
+      "header": "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8",
+      "week_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4",
+      "lesson_card": "bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors shadow-sm"
     }
   },
-  "components": {
-    "buttons": {
-      "style": "Sharp or slightly rounded (rounded-md). Solid primary color.",
-      "hover": "Opacity 90% or darken.",
-      "text": "Uppercase + Tracking-wide for CTA, Normal for UI actions."
-    },
-    "cards": {
-      "style": "Clean white, 1px border. No heavy shadows.",
-      "content_padding": "p-6"
-    },
-    "forms": {
-      "style": "Shadcn defaults with rounded-md. Focus ring must match --primary.",
-      "labels": "Text-sm font-medium text-gray-700."
-    },
-    "schedule_builder": {
-      "interaction": "Click-to-select slots. Drag-and-drop if possible.",
-      "visuals": "Time grid. Conflict slots highlighted in red/accent."
+  "refactor_instructions": {
+    "files": {
+      "/app/frontend/src/pages/AdminDashboardPage.jsx": [
+        {
+          "action": "REMOVE_ELEMENT",
+          "target": "[data-testid='admin-context-help-card']",
+          "reason": "User explicitly requested removal of instructions/onboarding."
+        },
+        {
+          "action": "REPLACE_CLASS",
+          "target": "sidebar",
+          "new_class": "hidden md:flex w-72 flex-col bg-white border-r border-slate-200 h-full fixed md:relative z-30"
+        },
+        {
+          "action": "WRAP_ELEMENT",
+          "target": "dashboard-page",
+          "wrapper_class": "flex h-screen bg-slate-50 overflow-hidden"
+        },
+        {
+          "action": "UPDATE_COMPONENT",
+          "target": "sidebar-tabs",
+          "instruction": "Convert button list to a semantic <nav> list. Use full width buttons with left alignment."
+        },
+        {
+          "action": "ADD_COMPONENT",
+          "target": "topbar-controls",
+          "instruction": "Insert a Hamburger Menu Button (Menu from lucide-react) visible only on mobile (md:hidden) to toggle sidebar state."
+        }
+      ],
+      "/app/frontend/src/pages/StudentSchedulePage.jsx": [
+        {
+          "action": "REDESIGN_MODAL",
+          "target": "student-password-modal-card",
+          "instruction": "Force VERTICAL layout for the form. Use 'flex flex-col gap-5'. Ensure inputs are 'w-full'.",
+          "new_structure": {
+            "overlay": "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4",
+            "card": "w-full max-w-[400px] bg-white rounded-2xl shadow-xl p-6 md:p-8 animate-in fade-in zoom-in-95 duration-200",
+            "title": "text-xl font-bold text-slate-900 mb-6 text-center",
+            "form": "flex flex-col gap-4",
+            "input_group": "space-y-1.5",
+            "actions": "flex flex-col-reverse md:flex-row gap-3 mt-4"
+          }
+        }
+      ]
     }
   },
-  "image_assets": {
-    "hero_background": {
-      "url": "https://images.unsplash.com/photo-1741699428553-41c8e5bd894d?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "alt": "Student studying in historic library",
-      "usage": "Main Landing Page Hero. Use with dark overlay (bg-black/50) for text readability."
-    },
-    "about_classroom": {
-      "url": "https://images.unsplash.com/photo-1758685848174-e061c6486651?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "alt": "Teacher in modern classroom",
-      "usage": "About Us / Course Program section."
-    },
-    "success_stories": {
-      "url": "https://images.unsplash.com/photo-1758270703124-b65dce9a2bec?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "alt": "Happy graduate student",
-      "usage": "Alumni Success section."
-    },
-    "course_materials": {
-      "url": "https://images.unsplash.com/photo-1731983568664-9c1d8a87e7a2?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "alt": "IELTS study books",
-      "usage": "Course details section."
-    }
+  "asset_urls": {
+     "logo_placeholder": "https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&q=80&w=200"
   },
-  "visual_enhancers": {
-    "textures": "Subtle grain on marketing backgrounds to reduce sterility.",
-    "icons": "Lucide React (Clean, standard).",
-    "shadows": "Very minimal. Preference for borders over shadows for the 'strict' look."
-  },
-  "admin_customization_rules": {
-    "logo": "Must be editable via Admin Settings. Use a placeholder initially.",
-    "colors": "Admin saves Hex codes -> System updates CSS Variables (:root).",
-    "texts": "All landing page text content must be fetched from DB/API."
-  },
-  "universal_guidelines": [
-    "Use CSS variables for all colors to enable Admin Theme Customization.",
-    "Do NOT use gradients for backgrounds, keep it flat and serious.",
-    "Ensure high contrast (WCAG AA) for all text.",
-    "Use 'sonner' for all toast notifications.",
-    "Dashboard must support Multi-Branch data isolation visually (e.g., branch name in header).",
-    "Schedule Builder must clearly show conflicts (Red background for busy slots).",
-    "Public pages must be fully responsive (Mobile First)."
+  "universal_guidelines_for_main_agent": [
+    "DO NOT use raw CSS classes like .sidebar, .card. Use Tailwind classes directly.",
+    "Preserve all data-testid attributes exactly as they are.",
+    "Ensure the Admin Sidebar is dismissible on mobile (click outside or close button).",
+    "Use 'sonner' for all notifications.",
+    "Inputs in the Password Modal MUST be stacked vertically (flex-col)."
   ]
 }
