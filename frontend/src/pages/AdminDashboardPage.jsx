@@ -1512,6 +1512,7 @@ export default function AdminDashboardPage() {
                           </div>
 
                           <div className="inline-form compact">
+                            <small data-testid={`student-account-id-${student.id}`}>ID аккаунта: {student.username || "еще не назначен"}</small>
                             <small data-testid={`student-groups-${student.id}`}>Группы: {student.groups?.join(", ") || "Без группы"}</small>
                             <button
                               className="primary-btn"
@@ -1864,6 +1865,7 @@ export default function AdminDashboardPage() {
                 <div key={student.id} className="row" data-testid={`groups-overview-row-${student.id}`}>
                   <span data-testid={`groups-overview-name-${student.id}`}>{student.full_name}</span>
                   <span data-testid={`groups-overview-phone-${student.id}`}>{student.phone}</span>
+                  <span data-testid={`groups-overview-username-${student.id}`}>{student.username || "не назначен"}</span>
                   <span data-testid={`groups-overview-groups-${student.id}`}>{student.groups?.join(", ") || "Без группы"}</span>
                 </div>
               ))}
