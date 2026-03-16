@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { AlertTriangle, Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Palette, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Menu, Palette, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { api, authConfig } from "../lib/api";
@@ -18,53 +18,6 @@ const TABS = [
   { id: "security", label: "10. Безопасность", icon: AlertTriangle },
   { id: "account", label: "11. Аккаунт", icon: KeyRound },
 ];
-
-const TAB_META = {
-  overview: {
-    title: "Панель управления филиалом",
-    hint: "Начните с заявок, затем добавьте учеников в группы и настройте расписание.",
-  },
-  leads: {
-    title: "Заявки с сайта",
-    hint: "Подтвердите заявку → ученик появится в списке учеников. Логин/пароль появятся только после добавления в группу.",
-  },
-  students: {
-    title: "Ученики",
-    hint: "Здесь можно вручную менять логин/пароль ученика при необходимости.",
-  },
-  groups: {
-    title: "Группы и переводы",
-    hint: "У ученика может быть 1 общая и 1 индивидуальная группа. Выпуск группы переносит всех в выпускники.",
-  },
-  schedule: {
-    title: "Расписание",
-    hint: "Сначала настройте время дня и обеда, затем создавайте пары — конфликты подсвечиваются автоматически.",
-  },
-  graduates: {
-    title: "Выпускники",
-    hint: "Используйте поиск и массовую очистку для управления архивом выпускников.",
-  },
-  resources: {
-    title: "Преподаватели и кабинеты",
-    hint: "Добавьте преподавателей и кабинеты, чтобы они стали доступны в расписании.",
-  },
-  site: {
-    title: "Контент сайта",
-    hint: "Изменения сохраняются для выбранного филиала: тексты, цвета, отзывы, точки карты.",
-  },
-  branches: {
-    title: "Филиалы",
-    hint: "Создавайте и редактируйте филиалы. Удаление филиала удаляет его базу данных.",
-  },
-  security: {
-    title: "Оповещения безопасности",
-    hint: "Здесь показываются попытки перебора паролей. Подтверждайте обработанные предупреждения.",
-  },
-  account: {
-    title: "Админ-аккаунт",
-    hint: "Смените логин и пароль администратора. После смены потребуется повторный вход.",
-  },
-};
 
 const defaultSiteDraft = {
   brand_name: "IELTS Center",
@@ -169,7 +122,7 @@ export default function AdminDashboardPage() {
     message: "",
     action: null,
   });
-  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const config = useMemo(() => authConfig(token), [token]);
 
@@ -834,19 +787,33 @@ export default function AdminDashboardPage() {
     );
   });
 
-  const activeTabMeta = TAB_META[activeTab] || TAB_META.overview;
-  const nextActionHint =
-    leads.filter((item) => item.status === "pending").length > 0
-      ? "Следующий шаг: обработайте новые заявки во вкладке «Желающие»."
-      : groups.length === 0
-        ? "Следующий шаг: создайте первую группу во вкладке «Группы»."
-        : schedules.length === 0
-          ? "Следующий шаг: добавьте первое занятие во вкладке «Расписание»."
-          : "Система настроена. Проверьте вкладки «Группы» и «Расписание» для актуализации данных.";
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    setIsMobileSidebarOpen(false);
+  };
 
   return (
-    <div className="dashboard-page" data-testid="admin-dashboard-page">
+    <div className={isMobileSidebarOpen ? "dashboard-page sidebar-open" : "dashboard-page"} data-testid="admin-dashboard-page">
+      {isMobileSidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          data-testid="admin-sidebar-backdrop"
+          aria-label="Close sidebar"
+        />
+      )}
       <aside className="sidebar" data-testid="admin-sidebar">
+        <div className="sidebar-mobile-top" data-testid="admin-sidebar-mobile-top">
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            data-testid="admin-sidebar-close-button"
+          >
+            <X size={16} /> Закрыть
+          </button>
+        </div>
         <div className="sidebar-brand" data-testid="admin-sidebar-brand">
           <img src={siteDraft.logo_url} alt="logo" className="logo" data-testid="admin-sidebar-logo" />
           <div>
@@ -862,7 +829,7 @@ export default function AdminDashboardPage() {
               <button
                 key={tab.id}
                 className={activeTab === tab.id ? "tab-btn active" : "tab-btn"}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 data-testid={`admin-tab-button-${tab.id}`}
               >
                 <Icon size={16} /> {tab.label}
@@ -884,12 +851,16 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="topbar-controls" data-testid="admin-topbar-controls">
+            <button
+              className="primary-btn mobile-only-btn"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              data-testid="admin-mobile-menu-button"
+            >
+              <Menu size={16} /> Меню
+            </button>
             <Link to="/" className="primary-btn" data-testid="admin-back-to-site-link">
               <Home size={16} /> На сайт
             </Link>
-            <button className="primary-btn" onClick={() => setShowHelpModal(true)} data-testid="admin-open-help-modal-button">
-              Быстрая инструкция
-            </button>
             <select
               value={selectedBranchId}
               onChange={(event) => setSelectedBranchId(event.target.value)}
@@ -903,12 +874,6 @@ export default function AdminDashboardPage() {
             </select>
           </div>
         </div>
-
-        <section className="card" data-testid="admin-context-help-card">
-          <h2 data-testid="admin-context-help-title">{activeTabMeta.title}</h2>
-          <p data-testid="admin-context-help-hint">{activeTabMeta.hint}</p>
-          <p data-testid="admin-context-next-step">{nextActionHint}</p>
-        </section>
 
         {activeTab === "branches" && user.role === "superadmin" && (
           <section className="card" data-testid="branches-tab-content">
@@ -2125,26 +2090,6 @@ export default function AdminDashboardPage() {
           </section>
         )}
       </main>
-
-      {showHelpModal && (
-        <div className="confirm-overlay" data-testid="admin-help-modal-overlay">
-          <div className="confirm-card" data-testid="admin-help-modal-card">
-            <h3 data-testid="admin-help-modal-title">Как работать в админ-панели</h3>
-            <div className="simple-list" data-testid="admin-help-modal-steps">
-              <p data-testid="admin-help-step-1">1) Во вкладке «Желающие» подтверждайте заявки.</p>
-              <p data-testid="admin-help-step-2">2) Во вкладке «Группы» добавляйте учеников в группы — логин/пароль создаются автоматически.</p>
-              <p data-testid="admin-help-step-3">3) Во вкладке «Расписание» настройте время дня и создавайте пары.</p>
-              <p data-testid="admin-help-step-4">4) Во вкладке «Выпускники» управляйте выпущенными группами.</p>
-              <p data-testid="admin-help-step-5">5) Во вкладках «Редактор сайта» и «Преподы/Классы» обновляйте контент и ресурсы.</p>
-            </div>
-            <div className="inline-form compact" data-testid="admin-help-modal-actions">
-              <button className="primary-btn" onClick={() => setShowHelpModal(false)} data-testid="admin-help-modal-close-button">
-                Понятно
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {confirmDialog.open && (
         <div className="confirm-overlay" data-testid="confirm-dialog-overlay">

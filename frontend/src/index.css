@@ -533,6 +533,10 @@ textarea {
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
+.sidebar-backdrop {
+  display: none;
+}
+
 .sidebar {
   border-right: 1px solid #e5e7eb;
   background: #fff;
@@ -540,6 +544,10 @@ textarea {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
+}
+
+.sidebar-mobile-top {
+  display: none;
 }
 
 .sidebar-brand {
@@ -579,6 +587,7 @@ textarea {
 .tab-btn.active {
   border-color: var(--primary);
   color: var(--primary);
+  background: #eff6ff;
 }
 
 .dashboard-content {
@@ -593,6 +602,10 @@ textarea {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+}
+
+.mobile-only-btn {
+  display: none;
 }
 
 .topbar-controls {
@@ -711,6 +724,14 @@ textarea {
   margin: 0.4rem 0 1rem;
   color: #475569;
   font-size: 0.9rem;
+}
+
+[data-testid="student-password-change-form"] {
+  grid-template-columns: 1fr !important;
+}
+
+[data-testid="student-password-modal-actions"] {
+  grid-template-columns: 1fr !important;
 }
 
 .status-pill.status-ok {
@@ -864,8 +885,37 @@ textarea {
   }
 
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid #e5e7eb;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(320px, 90vw);
+    border-right: 1px solid #e5e7eb;
+    border-bottom: none;
+    transform: translateX(-110%);
+    transition: transform 0.25s ease;
+    z-index: 80;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+  }
+
+  .dashboard-page.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-mobile-top {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: none;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 70;
+  }
+
+  .mobile-only-btn {
+    display: inline-flex;
   }
 
   .nav-grid {
