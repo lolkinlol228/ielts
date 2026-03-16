@@ -1,133 +1,125 @@
 {
-  "meta": {
-    "project": "IELTS Center Redesign",
-    "persona": "E1 (Anti-AI Designer)",
-    "tone": "Swiss Utility & High Efficiency",
-    "priority": "Mobile Adaptation & Instruction Removal"
+  "project_name": "IELTS Center - Glassmorphism Redesign",
+  "design_philosophy": {
+    "core_concept": "Crystal Clear Education",
+    "visual_style": "Modern Corporate Glassmorphism",
+    "primary_emotion": "Trust, Clarity, Professionalism",
+    "theme": "Light Mode (Primary)",
+    "description": "A clean, airy interface using generous whitespace, soft glass effects, and deep corporate blues to convey authority and modern efficiency."
   },
   "typography": {
-    "headings": {
-      "family": "Outfit, sans-serif",
-      "weights": "font-semibold tracking-tight",
-      "sizes": {
-        "h1": "text-3xl md:text-4xl",
-        "h2": "text-xl md:text-2xl"
-      }
+    "font_family": {
+      "heading": "\"Outfit\", sans-serif",
+      "body": "\"Inter\", sans-serif",
+      "mono": "\"JetBrains Mono\", monospace"
     },
-    "body": {
-      "family": "Inter, sans-serif",
-      "base": "text-sm text-slate-600 leading-relaxed"
+    "scale": {
+      "h1": "clamp(2.5rem, 5vw, 4rem)",
+      "h2": "clamp(2rem, 4vw, 3rem)",
+      "h3": "1.75rem",
+      "body_lg": "1.125rem",
+      "body": "1rem",
+      "small": "0.875rem"
+    },
+    "weights": {
+      "light": 300,
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
     }
   },
   "colors": {
     "palette": {
-      "primary": "bg-blue-700 hover:bg-blue-800 text-white",
-      "danger": "bg-red-600 hover:bg-red-700 text-white",
-      "surface": "bg-slate-50",
-      "card": "bg-white",
-      "border": "border-slate-200"
+      "primary": {
+        "main": "#1e40af",
+        "dark": "#1e3a8a",
+        "light": "#3b82f6",
+        "surface": "#eff6ff"
+      },
+      "neutral": {
+        "900": "#0f172a",
+        "800": "#1e293b",
+        "600": "#475569",
+        "400": "#94a3b8",
+        "200": "#e2e8f0",
+        "100": "#f1f5f9",
+        "50": "#f8fafc"
+      },
+      "semantic": {
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "danger": "#ef4444",
+        "info": "#3b82f6"
+      }
+    },
+    "glass": {
+      "background": "rgba(255, 255, 255, 0.7)",
+      "border": "rgba(255, 255, 255, 0.5)",
+      "shadow": "0 8px 32px 0 rgba(31, 38, 135, 0.15)",
+      "blur": "16px"
     }
   },
-  "global_ui_rules": [
-    "Refactor all raw CSS from index.css to Tailwind utility classes.",
-    "Ensure all interactive elements have min-height 44px for touch targets.",
-    "REMOVE all 'helper' text and 'onboarding' hints from the Admin Panel as requested by the user."
-  ],
-  "components": {
+  "spacing_system": {
+    "base_unit": "0.25rem",
+    "values": {
+      "xs": "0.5rem",
+      "sm": "1rem",
+      "md": "1.5rem",
+      "lg": "2rem",
+      "xl": "3rem",
+      "2xl": "4rem",
+      "3xl": "6rem"
+    },
+    "layout": {
+      "container_max": "1280px",
+      "sidebar_width": "280px"
+    }
+  },
+  "ui_components": {
+    "glass_panel": {
+      "css_rules": "background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05); border-radius: 20px;",
+      "usage": "Use for Cards, Sidebar, Modals, Dropdowns"
+    },
     "buttons": {
-      "primary": "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-blue-700 text-white font-medium hover:bg-blue-800 active:scale-95 transition-all shadow-sm",
-      "danger": "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-red-100 text-red-700 font-medium hover:bg-red-200 active:scale-95 transition-all",
-      "ghost": "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all"
+      "primary": "background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(30, 64, 175, 0.25); transition: transform 0.2s, box-shadow 0.2s;",
+      "secondary": "background: white; color: #1e40af; border: 1px solid #e2e8f0; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 500; transition: all 0.2s;",
+      "danger": "background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 0.75rem 1.5rem; border-radius: 12px;"
     },
     "inputs": {
-      "base": "w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400",
-      "label": "block text-sm font-medium text-slate-700 mb-1.5"
-    },
-    "cards": {
-      "base": "bg-white rounded-xl border border-slate-200 shadow-sm p-6"
+      "default": "background: rgba(255, 255, 255, 0.8); border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.75rem 1rem; width: 100%; transition: border-color 0.2s, box-shadow 0.2s; font-family: inherit;",
+      "focus": "border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);"
     }
   },
   "layout_strategies": {
     "admin_dashboard": {
-      "structure": "flex h-screen bg-slate-50 overflow-hidden",
-      "sidebar": {
-        "desktop": "hidden md:flex w-72 flex-col bg-white border-r border-slate-200 h-full",
-        "mobile": "fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out",
-        "branding": "h-16 flex items-center px-6 border-b border-slate-100",
-        "nav_list": "flex-1 overflow-y-auto py-4 px-3 space-y-1",
-        "nav_item": "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 transition-colors data-[active=true]:bg-blue-50 data-[active=true]:text-blue-700"
-      },
-      "main_content": {
-        "wrapper": "flex-1 flex flex-col h-full overflow-hidden",
-        "topbar": "h-16 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20",
-        "scroll_area": "flex-1 overflow-y-auto p-4 md:p-8 space-y-6"
-      },
-      "grid_system": {
-        "metrics": "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4",
-        "forms": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-      }
+      "structure": "Grid layout with fixed (but floating visual) sidebar.",
+      "sidebar": "Fixed position, glass effect, distinct from content. Width: 280px.",
+      "content_area": "Generous padding (3rem). Cards should be separated by large gaps (2rem).",
+      "responsive": "Sidebar collapses to bottom sheet or off-canvas on mobile."
     },
-    "student_portal": {
-      "container": "min-h-screen bg-slate-50 p-4 md:p-8",
-      "header": "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8",
-      "week_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4",
-      "lesson_card": "bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors shadow-sm"
+    "public_home": {
+      "hero": "Full height (min-height: 80vh). Text on left, large distinct image on right or background with heavy overlay.",
+      "sections": "Alternating backgrounds (White -> Soft Blue -> White). High padding (6rem vertical)."
     }
   },
-  "refactor_instructions": {
-    "files": {
-      "/app/frontend/src/pages/AdminDashboardPage.jsx": [
-        {
-          "action": "REMOVE_ELEMENT",
-          "target": "[data-testid='admin-context-help-card']",
-          "reason": "User explicitly requested removal of instructions/onboarding."
-        },
-        {
-          "action": "REPLACE_CLASS",
-          "target": "sidebar",
-          "new_class": "hidden md:flex w-72 flex-col bg-white border-r border-slate-200 h-full fixed md:relative z-30"
-        },
-        {
-          "action": "WRAP_ELEMENT",
-          "target": "dashboard-page",
-          "wrapper_class": "flex h-screen bg-slate-50 overflow-hidden"
-        },
-        {
-          "action": "UPDATE_COMPONENT",
-          "target": "sidebar-tabs",
-          "instruction": "Convert button list to a semantic <nav> list. Use full width buttons with left alignment."
-        },
-        {
-          "action": "ADD_COMPONENT",
-          "target": "topbar-controls",
-          "instruction": "Insert a Hamburger Menu Button (Menu from lucide-react) visible only on mobile (md:hidden) to toggle sidebar state."
-        }
-      ],
-      "/app/frontend/src/pages/StudentSchedulePage.jsx": [
-        {
-          "action": "REDESIGN_MODAL",
-          "target": "student-password-modal-card",
-          "instruction": "Force VERTICAL layout for the form. Use 'flex flex-col gap-5'. Ensure inputs are 'w-full'.",
-          "new_structure": {
-            "overlay": "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4",
-            "card": "w-full max-w-[400px] bg-white rounded-2xl shadow-xl p-6 md:p-8 animate-in fade-in zoom-in-95 duration-200",
-            "title": "text-xl font-bold text-slate-900 mb-6 text-center",
-            "form": "flex flex-col gap-4",
-            "input_group": "space-y-1.5",
-            "actions": "flex flex-col-reverse md:flex-row gap-3 mt-4"
-          }
-        }
-      ]
-    }
+  "image_assets": {
+    "hero_bg": "https://images.unsplash.com/photo-1758270705639-9727f350f026?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwyfHxJRUxUUyUyMHN0dWRlbnRzJTIwc3R1ZHlpbmclMjBtb2Rlcm4lMjBjbGFzc3Jvb218ZW58MHx8fHwxNzczNjQyMzc0fDA&ixlib=rb-4.1.0&q=85",
+    "classroom_empty": "https://images.unsplash.com/photo-1772431176124-d0e3d2a78aed?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwzfHxJRUxUUyUyMHN0dWRlbnRzJTIwc3R1ZHlpbmclMjBtb2Rlcm4lMjBjbGFzc3Jvb218ZW58MHx8fHwxNzczNjQyMzc0fDA&ixlib=rb-4.1.0&q=85",
+    "teacher_portrait": "https://images.unsplash.com/photo-1758685845906-6f705cde4fb7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwzfHxJRUxUUyUyMHRlYWNoZXIlMjBwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzM2NDIzODF8MA&ixlib=rb-4.1.0&q=85"
   },
-  "asset_urls": {
-     "logo_placeholder": "https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&q=80&w=200"
+  "instructions_to_main_agent": {
+    "css_refactor": "Completely overhaul /app/frontend/src/index.css. Replace all hardcoded hex values with CSS variables defined in :root. Implement the 'glass-panel' utility class and apply it to all cards (.card, .form-panel, .sidebar).",
+    "dashboard_update": "In AdminDashboardPage.jsx, wrap the main content in a container that provides more padding. Ensure the Sidebar is visually separated.",
+    "login_page": "Update LoginPage.jsx to use a full-screen background with a centered glass card for the form.",
+    "public_page": "Update PublicHomePage.jsx to use the new hero image and increase section spacing.",
+    "general": "Do NOT use Tailwind classes. Write standard CSS in index.css. Use BEM-like naming or standard utility classes as needed. Ensure all text has sufficient contrast."
   },
-  "universal_guidelines_for_main_agent": [
-    "DO NOT use raw CSS classes like .sidebar, .card. Use Tailwind classes directly.",
-    "Preserve all data-testid attributes exactly as they are.",
-    "Ensure the Admin Sidebar is dismissible on mobile (click outside or close button).",
-    "Use 'sonner' for all notifications.",
-    "Inputs in the Password Modal MUST be stacked vertically (flex-col)."
+  "universal_guidelines": [
+    "Use 2-3x more whitespace than you think is necessary.",
+    "Avoid pure black (#000000). Use #0f172a or similar.",
+    "Glass effects must have a border to separate them from the background.",
+    "Transitions on all interactive elements (hover, focus, active).",
+    "Ensure data-testid attributes are preserved exactly."
   ]
 }
