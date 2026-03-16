@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { AlertTriangle, Building2, CalendarClock, GraduationCap, Home, KeyRound, LogOut, Menu, Palette, Settings, ShieldCheck, Users, X } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, Download, GraduationCap, Home, KeyRound, LogOut, Menu, Palette, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { api, authConfig } from "../lib/api";
@@ -727,6 +727,25 @@ export default function AdminDashboardPage() {
       toast.success("Запись удалена");
     } catch {
       toast.error("Ошибка удаления записи");
+    }
+  };
+
+  const exportToExcel = async (type) => {
+    try {
+      const token = localStorage.getItem("token");
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL || import.meta.env.VITE_BACKEND_URL || "";
+      const url = `${backendUrl}/api/admin/export/${type}?branch_id=${selectedBranchId}`;
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${type}_export.xlsx`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast.success("Файл скачан");
+    } catch {
+      toast.error("Ошибка экспорта");
     }
   };
 
@@ -1509,7 +1528,12 @@ export default function AdminDashboardPage() {
 
         {activeTab === "students" && (
           <section className="card" data-testid="students-tab-content">
-            <h2 data-testid="students-title">Ученики по группам</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 data-testid="students-title">Ученики по группам</h2>
+              <button className="primary-btn" onClick={() => exportToExcel("students")} data-testid="export-students-btn">
+                <Download size={15} /> Экспорт Excel
+              </button>
+            </div>
             <div className="simple-list" data-testid="students-grouped-accordion">
               {studentsByGroup.map((groupBucket) => (
                 <article key={groupBucket.id} className="form-panel" data-testid={`students-group-bucket-${groupBucket.id}`}>
@@ -1787,7 +1811,12 @@ export default function AdminDashboardPage() {
 
         {activeTab === "groups" && (
           <section className="card" data-testid="groups-tab-content">
-            <h2 data-testid="groups-title">Группы, индивидуальные занятия и переводы</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 data-testid="groups-title">Группы, индивидуальные занятия и переводы</h2>
+              <button className="primary-btn" onClick={() => exportToExcel("groups")} data-testid="export-groups-btn">
+                <Download size={15} /> Экспорт Excel
+              </button>
+            </div>
 
             <div className="group-create-form" data-testid="group-create-form-row">
               <input
@@ -1940,7 +1969,12 @@ export default function AdminDashboardPage() {
 
         {activeTab === "graduates" && (
           <section className="card" data-testid="graduates-tab-content">
-            <h2 data-testid="graduates-title">Выпускники</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 data-testid="graduates-title">Выпускники</h2>
+              <button className="primary-btn" onClick={() => exportToExcel("graduates")} data-testid="export-graduates-btn">
+                <Download size={15} /> Экспорт Excel
+              </button>
+            </div>
             <div className="inline-form" data-testid="graduates-controls-row">
               <input
                 placeholder="Поиск выпускников"
@@ -1987,7 +2021,12 @@ export default function AdminDashboardPage() {
 
         {activeTab === "schedule" && (
           <section className="card" data-testid="schedule-tab-content">
-            <h2 data-testid="schedule-title">Конструктор расписания</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 data-testid="schedule-title">Конструктор расписания</h2>
+              <button className="primary-btn" onClick={() => exportToExcel("schedules")} data-testid="export-schedules-btn">
+                <Download size={15} /> Экспорт Excel
+              </button>
+            </div>
 
             <div className="form-grid" data-testid="schedule-config-form">
               <label data-testid="schedule-config-start-label">

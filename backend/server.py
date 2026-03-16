@@ -6,13 +6,17 @@ import string
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from io import BytesIO
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
@@ -1737,6 +1741,193 @@ async def update_schedule(
     await branch_db.schedules.update_one({"id": schedule_id}, {"$set": update_doc})
     updated = await branch_db.schedules.find_one({"id": schedule_id}, {"_id": 0})
     return sanitize(updated) or {**existing, **update_doc}
+
+
+
+# ─── Excel Export Helpers ──────────────────────────
+
+HEADER_FONT = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+HEADER_FILL = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
+HEADER_ALIGNMENT = Alignment(horizontal="center", vertical="center", wrap_text=True)
+CELL_FONT = Font(name="Calibri", size=10)
+CELL_ALIGNMENT = Alignment(vertical="center", wrap_text=True)
+THIN_BORDER = Border(
+    left=Side(style="thin", color="D1D5DB"),
+    right=Side(style="thin", color="D1D5DB"),
+    top=Side(style="thin", color="D1D5DB"),
+    bottom=Side(style="thin", color="D1D5DB"),
+)
+
+
+def style_worksheet(ws, headers: List[str], rows: List[List], col_widths: List[int]):
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = HEADER_ALIGNMENT
+        cell.border = THIN_BORDER
+
+    for row_idx, row_data in enumerate(rows, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = CELL_FONT
+            cell.alignment = CELL_ALIGNMENT
+            cell.border = THIN_BORDER
+
+    for col_idx, width in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else "A"].width = width
+
+
+def workbook_to_response(wb: Workbook, filename: str) -> StreamingResponse:
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/admin/export/students")
+async def export_students(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    students = await branch_db.students.find({}, {"_id": 0}).to_list(length=5000)
+    groups = await branch_db.groups.find({}, {"_id": 0, "id": 1, "name": 1, "is_individual": 1}).to_list(length=2000)
+    users = await master_db.users.find({"branch_id": branch_id, "role": "student"}, {"_id": 0, "student_id": 1, "username": 1}).to_list(length=5000)
+    group_map = {g["id"]: g for g in groups}
+    user_map = {u["student_id"]: u.get("username") for u in users}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ученики"
+    headers = ["#", "ФИО", "Телефон", "Логин", "Группы", "Тип групп", "Дата добавления"]
+
+    rows = []
+    for idx, s in enumerate(sorted(students, key=lambda x: x["full_name"]), 1):
+        gids = s.get("group_ids", [])
+        group_names = [group_map[gid]["name"] for gid in gids if gid in group_map]
+        group_types = []
+        for gid in gids:
+            g = group_map.get(gid)
+            if g:
+                group_types.append("Инд." if g.get("is_individual") else "Общая")
+        rows.append([
+            idx,
+            s["full_name"],
+            s.get("phone", ""),
+            user_map.get(s["id"], ""),
+            ", ".join(group_names) if group_names else "Без группы",
+            ", ".join(group_types) if group_types else "-",
+            s.get("created_at", "")[:10],
+        ])
+
+    style_worksheet(ws, headers, rows, [5, 30, 18, 18, 30, 15, 14])
+    return workbook_to_response(wb, "students_export.xlsx")
+
+
+@app.get("/api/admin/export/groups")
+async def export_groups(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    groups = await branch_db.groups.find({}, {"_id": 0}).to_list(length=1000)
+    students = await branch_db.students.find({}, {"_id": 0, "id": 1, "full_name": 1, "group_ids": 1}).to_list(length=5000)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Группы"
+    headers = ["#", "Название группы", "Тип", "Кол-во учеников", "Ученики", "Дата создания"]
+
+    rows = []
+    for idx, g in enumerate(sorted(groups, key=lambda x: x["name"]), 1):
+        gid = g["id"]
+        members = [s["full_name"] for s in students if gid in s.get("group_ids", [])]
+        rows.append([
+            idx,
+            g["name"],
+            "Индивидуальная" if g.get("is_individual") else "Общая",
+            len(members),
+            ", ".join(members) if members else "-",
+            g.get("created_at", "")[:10],
+        ])
+
+    style_worksheet(ws, headers, rows, [5, 22, 18, 16, 50, 14])
+    return workbook_to_response(wb, "groups_export.xlsx")
+
+
+@app.get("/api/admin/export/schedules")
+async def export_schedules(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    schedules = await branch_db.schedules.find({}, {"_id": 0}).to_list(length=4000)
+    groups = await branch_db.groups.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=1000)
+    teachers = await branch_db.teachers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=1000)
+    classrooms = await branch_db.classrooms.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=1000)
+    group_map = {x["id"]: x["name"] for x in groups}
+    teacher_map = {x["id"]: x["name"] for x in teachers}
+    classroom_map = {x["id"]: x["name"] for x in classrooms}
+
+    day_order = {day: idx for idx, day in enumerate(WEEK_DAYS)}
+    schedules_sorted = sorted(schedules, key=lambda s: (day_order.get(s["day"], 99), s["start"]))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Расписание"
+    headers = ["#", "День", "Время начала", "Время конца", "Группа", "Преподаватель", "Кабинет"]
+
+    rows = []
+    for idx, s in enumerate(schedules_sorted, 1):
+        rows.append([
+            idx,
+            s["day"],
+            s["start"],
+            s["end"],
+            group_map.get(s["group_id"], "-"),
+            teacher_map.get(s["teacher_id"], "-"),
+            classroom_map.get(s["classroom_id"], "-"),
+        ])
+
+    style_worksheet(ws, headers, rows, [5, 10, 14, 14, 22, 22, 16])
+    return workbook_to_response(wb, "schedule_export.xlsx")
+
+
+@app.get("/api/admin/export/graduates")
+async def export_graduates(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    graduates = await branch_db.graduates.find({}, {"_id": 0}).to_list(length=5000)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Выпускники"
+    headers = ["#", "ФИО", "Телефон", "Группа", "Балл IELTS", "Дата выпуска"]
+
+    rows = []
+    for idx, g in enumerate(sorted(graduates, key=lambda x: x.get("graduated_at", ""), reverse=True), 1):
+        rows.append([
+            idx,
+            g.get("full_name", ""),
+            g.get("phone", ""),
+            g.get("group_name", "-"),
+            g.get("ielts_score", ""),
+            g.get("graduated_at", "")[:10],
+        ])
+
+    style_worksheet(ws, headers, rows, [5, 30, 18, 22, 12, 14])
+    return workbook_to_response(wb, "graduates_export.xlsx")
 
 
 @app.get("/api/student/schedule")
