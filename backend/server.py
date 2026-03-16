@@ -394,6 +394,13 @@ class StudentCredentialsInput(BaseModel):
     password: str
 
 
+class StudentProfileUpdateInput(BaseModel):
+    full_name: str
+    phone: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
 class StudentPasswordChangeInput(BaseModel):
     current_password: str
     new_password: str
@@ -1029,10 +1036,13 @@ async def list_students(
     branch_db = await get_branch_db(branch_id)
     students = await branch_db.students.find({}, {"_id": 0}).to_list(length=2000)
     groups = await branch_db.groups.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=2000)
+    users = await master_db.users.find({"branch_id": branch_id, "role": "student"}, {"_id": 0, "student_id": 1, "username": 1}).to_list(length=3000)
     group_map = {g["id"]: g["name"] for g in groups}
+    user_map = {u["student_id"]: u.get("username") for u in users}
 
     for student in students:
         student["groups"] = [group_map[group_id] for group_id in student.get("group_ids", []) if group_id in group_map]
+        student["username"] = user_map.get(student["id"])
 
     return sorted(students, key=lambda s: s["full_name"])
 
@@ -1080,6 +1090,66 @@ async def update_student_credentials(
         upsert=True,
     )
     return {"message": "Данные для входа обновлены"}
+
+
+@app.put("/api/admin/students/{student_id}")
+async def update_student_profile(
+    student_id: str,
+    payload: StudentProfileUpdateInput,
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+) -> Dict[str, str]:
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    student = await branch_db.students.find_one({"id": student_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="Студент не найден")
+
+    update_student_doc = {
+        "full_name": payload.full_name.strip(),
+        "phone": payload.phone.strip(),
+        "updated_at": now_iso(),
+    }
+    await branch_db.students.update_one({"id": student_id}, {"$set": update_student_doc})
+
+    existing_user = await master_db.users.find_one({"branch_id": branch_id, "student_id": student_id, "role": "student"}, {"_id": 0})
+    update_user_doc: Dict[str, Any] = {"full_name": payload.full_name.strip(), "updated_at": now_iso()}
+
+    if payload.username:
+        normalized_username = payload.username.strip().lower()
+        duplicate = await master_db.users.find_one(
+            {"username": normalized_username, "id": {"$ne": existing_user["id"] if existing_user else ""}},
+            {"_id": 0},
+        )
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Логин уже занят")
+        update_user_doc["username"] = normalized_username
+
+    if payload.password:
+        if len(payload.password) < 6:
+            raise HTTPException(status_code=400, detail="Пароль должен быть не короче 6 символов")
+        update_user_doc["password_hash"] = pwd_context.hash(payload.password)
+        update_user_doc["password_customized"] = True
+
+    if existing_user:
+        await master_db.users.update_one({"id": existing_user["id"]}, {"$set": update_user_doc})
+    elif payload.username and payload.password:
+        await master_db.users.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "role": "student",
+                "branch_id": branch_id,
+                "student_id": student_id,
+                "full_name": payload.full_name.strip(),
+                "username": payload.username.strip().lower(),
+                "password_hash": pwd_context.hash(payload.password),
+                "password_customized": True,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+        )
+
+    return {"message": "Профиль студента обновлен"}
 
 
 @app.get("/api/admin/teachers")

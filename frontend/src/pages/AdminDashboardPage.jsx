@@ -104,6 +104,7 @@ export default function AdminDashboardPage() {
   const [conflictState, setConflictState] = useState(null);
 
   const [credentialsDraft, setCredentialsDraft] = useState({});
+  const [openStudentGroupIds, setOpenStudentGroupIds] = useState({});
   const [teacherDrafts, setTeacherDrafts] = useState({});
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
@@ -227,15 +228,30 @@ export default function AdminDashboardPage() {
   }, [teachers]);
 
   useEffect(() => {
-    setAdminCredentialsForm((prev) => ({ ...prev, new_username: user?.username || prev.new_username }));
-  }, [user?.username]);
+    const nextDrafts = {};
+    students.forEach((student) => {
+      nextDrafts[student.id] = {
+        full_name: student.full_name || "",
+        phone: student.phone || "",
+        username: student.username || "",
+        password: "",
+      };
+    });
+    setCredentialsDraft(nextDrafts);
+  }, [students]);
 
   useEffect(() => {
-    const freshAlerts = securityAlerts.filter((item) => item.status === "new");
-    if (freshAlerts.length > 0) {
-      toast.error(`Внимание: зафиксированы попытки перебора пароля (${freshAlerts.length})`);
-    }
-  }, [securityAlerts]);
+    const nextOpenState = {};
+    groups.forEach((group) => {
+      nextOpenState[group.id] = false;
+    });
+    nextOpenState.unassigned = false;
+    setOpenStudentGroupIds(nextOpenState);
+  }, [groups]);
+
+  useEffect(() => {
+    setAdminCredentialsForm((prev) => ({ ...prev, new_username: user?.username || prev.new_username }));
+  }, [user?.username]);
 
   const createBranch = async () => {
     if (!newBranch.name || !newBranch.location) {
@@ -388,16 +404,30 @@ export default function AdminDashboardPage() {
 
   const saveStudentCredentials = async (studentId) => {
     const payload = credentialsDraft[studentId];
-    if (!payload?.username || !payload?.password) {
-      toast.error("Введите логин и пароль");
+    if (!payload?.full_name || !payload?.phone) {
+      toast.error("Укажите ФИО и телефон");
       return;
     }
     try {
-      await api.put(`/api/admin/students/${studentId}/credentials`, payload, withBranch());
-      toast.success("Данные входа обновлены");
+      await api.put(
+        `/api/admin/students/${studentId}`,
+        {
+          full_name: payload.full_name,
+          phone: payload.phone,
+          username: payload.username || null,
+          password: payload.password || null,
+        },
+        withBranch()
+      );
+      await loadBranchData();
+      toast.success("Профиль ученика обновлён");
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Ошибка обновления");
     }
+  };
+
+  const toggleStudentGroupAccordion = (groupKey) => {
+    setOpenStudentGroupIds((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
   const addTeacher = async () => {
@@ -762,7 +792,6 @@ export default function AdminDashboardPage() {
   ]);
 
   const overviewStats = {
-    security: securityAlerts.filter((item) => item.status === "new").length,
     leads: leads.filter((item) => item.status === "pending").length,
     students: students.length,
     teachers: teachers.length,
@@ -786,6 +815,48 @@ export default function AdminDashboardPage() {
       (graduate.phone || "").toLowerCase().includes(query)
     );
   });
+
+  const studentsByGroup = useMemo(() => {
+    const grouped = {};
+    groups.forEach((group) => {
+      grouped[group.id] = {
+        id: group.id,
+        name: group.name,
+        is_individual: group.is_individual,
+        students: [],
+      };
+    });
+
+    grouped.unassigned = {
+      id: "unassigned",
+      name: "Без группы",
+      is_individual: false,
+      students: [],
+    };
+
+    students.forEach((student) => {
+      const groupIds = student.group_ids || [];
+      if (groupIds.length === 0) {
+        grouped.unassigned.students.push(student);
+        return;
+      }
+      groupIds.forEach((groupId) => {
+        if (grouped[groupId]) {
+          grouped[groupId].students.push(student);
+        }
+      });
+    });
+
+    Object.values(grouped).forEach((bucket) => {
+      bucket.students.sort((a, b) => a.full_name.localeCompare(b.full_name, "ru"));
+    });
+
+    const orderedGroups = groups.map((group) => grouped[group.id]).filter(Boolean);
+    if (grouped.unassigned.students.length > 0) {
+      orderedGroups.push(grouped.unassigned);
+    }
+    return orderedGroups;
+  }, [groups, students]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
@@ -949,10 +1020,6 @@ export default function AdminDashboardPage() {
           <section className="card" data-testid="overview-tab-content">
             <h2 data-testid="overview-title">Обзор филиала</h2>
             <div className="metrics-grid">
-              <div className="metric-card" data-testid="overview-security-alerts-card">
-                <strong>{overviewStats.security}</strong>
-                <span>Оповещения безопасности</span>
-              </div>
               <div className="metric-card" data-testid="overview-pending-leads-card">
                 <strong>{overviewStats.leads}</strong>
                 <span>Новые заявки</span>
@@ -974,27 +1041,6 @@ export default function AdminDashboardPage() {
                 <span>Занятия</span>
               </div>
             </div>
-
-            {securityAlerts.length > 0 && (
-              <div className="table-like" data-testid="overview-security-alerts-list">
-                {securityAlerts.slice(0, 5).map((alert) => (
-                  <div key={alert.id} className="row" data-testid={`overview-security-alert-${alert.id}`}>
-                    <span data-testid={`overview-security-alert-user-${alert.id}`}>{alert.username}</span>
-                    <span data-testid={`overview-security-alert-message-${alert.id}`}>{alert.message}</span>
-                    <span data-testid={`overview-security-alert-status-${alert.id}`}>{alert.status}</span>
-                    {alert.status === "new" && (
-                      <button
-                        className="primary-btn"
-                        onClick={() => ackSecurityAlert(alert.id)}
-                        data-testid={`overview-security-alert-ack-${alert.id}`}
-                      >
-                        Принять
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </section>
         )}
 
@@ -1398,48 +1444,91 @@ export default function AdminDashboardPage() {
 
         {activeTab === "students" && (
           <section className="card" data-testid="students-tab-content">
-            <h2 data-testid="students-title">Ученики и авторизация</h2>
-            <div className="table-like" data-testid="students-table">
-              {students.map((student) => (
-                <div key={student.id} className="row student-row" data-testid={`student-row-${student.id}`}>
-                  <div>
-                    <strong data-testid={`student-name-${student.id}`}>{student.full_name}</strong>
-                    <p data-testid={`student-phone-${student.id}`}>{student.phone}</p>
-                    <small data-testid={`student-groups-${student.id}`}>{student.groups?.join(", ") || "Без группы"}</small>
-                  </div>
+            <h2 data-testid="students-title">Ученики по группам</h2>
+            <div className="simple-list" data-testid="students-grouped-accordion">
+              {studentsByGroup.map((groupBucket) => (
+                <article key={groupBucket.id} className="form-panel" data-testid={`students-group-bucket-${groupBucket.id}`}>
+                  <button
+                    type="button"
+                    className="tab-btn"
+                    onClick={() => toggleStudentGroupAccordion(groupBucket.id)}
+                    data-testid={`students-group-toggle-${groupBucket.id}`}
+                  >
+                    <span>
+                      {groupBucket.name} {groupBucket.is_individual ? "(инд.)" : ""}
+                    </span>
+                    <span data-testid={`students-group-count-${groupBucket.id}`}>{groupBucket.students.length}</span>
+                  </button>
 
-                  <div className="inline-form compact">
-                    <input
-                      placeholder="Новый логин"
-                      value={credentialsDraft[student.id]?.username || ""}
-                      onChange={(event) =>
-                        setCredentialsDraft((prev) => ({
-                          ...prev,
-                          [student.id]: { ...prev[student.id], username: event.target.value },
-                        }))
-                      }
-                      data-testid={`student-username-input-${student.id}`}
-                    />
-                    <input
-                      placeholder="Новый пароль"
-                      value={credentialsDraft[student.id]?.password || ""}
-                      onChange={(event) =>
-                        setCredentialsDraft((prev) => ({
-                          ...prev,
-                          [student.id]: { ...prev[student.id], password: event.target.value },
-                        }))
-                      }
-                      data-testid={`student-password-input-${student.id}`}
-                    />
-                    <button
-                      className="primary-btn"
-                      onClick={() => saveStudentCredentials(student.id)}
-                      data-testid={`student-save-credentials-button-${student.id}`}
-                    >
-                      Сменить
-                    </button>
-                  </div>
-                </div>
+                  {openStudentGroupIds[groupBucket.id] && (
+                    <div className="table-like" data-testid={`students-group-content-${groupBucket.id}`}>
+                      {groupBucket.students.map((student) => (
+                        <div key={`${groupBucket.id}-${student.id}`} className="translation-card" data-testid={`student-row-${student.id}`}>
+                          <div className="form-grid">
+                            <input
+                              placeholder="ФИО"
+                              value={credentialsDraft[student.id]?.full_name || ""}
+                              onChange={(event) =>
+                                setCredentialsDraft((prev) => ({
+                                  ...prev,
+                                  [student.id]: { ...prev[student.id], full_name: event.target.value },
+                                }))
+                              }
+                              data-testid={`student-name-input-${student.id}`}
+                            />
+                            <input
+                              placeholder="Телефон"
+                              value={credentialsDraft[student.id]?.phone || ""}
+                              onChange={(event) =>
+                                setCredentialsDraft((prev) => ({
+                                  ...prev,
+                                  [student.id]: { ...prev[student.id], phone: event.target.value },
+                                }))
+                              }
+                              data-testid={`student-phone-input-${student.id}`}
+                            />
+                            <input
+                              placeholder="Логин"
+                              value={credentialsDraft[student.id]?.username || ""}
+                              onChange={(event) =>
+                                setCredentialsDraft((prev) => ({
+                                  ...prev,
+                                  [student.id]: { ...prev[student.id], username: event.target.value },
+                                }))
+                              }
+                              data-testid={`student-username-input-${student.id}`}
+                            />
+                            <input
+                              placeholder="Новый пароль (опционально)"
+                              value={credentialsDraft[student.id]?.password || ""}
+                              onChange={(event) =>
+                                setCredentialsDraft((prev) => ({
+                                  ...prev,
+                                  [student.id]: { ...prev[student.id], password: event.target.value },
+                                }))
+                              }
+                              data-testid={`student-password-input-${student.id}`}
+                            />
+                          </div>
+
+                          <div className="inline-form compact">
+                            <small data-testid={`student-groups-${student.id}`}>Группы: {student.groups?.join(", ") || "Без группы"}</small>
+                            <button
+                              className="primary-btn"
+                              onClick={() => saveStudentCredentials(student.id)}
+                              data-testid={`student-save-credentials-button-${student.id}`}
+                            >
+                              Сохранить
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {groupBucket.students.length === 0 && (
+                        <div data-testid={`students-group-empty-${groupBucket.id}`}>В этой группе пока нет учеников</div>
+                      )}
+                    </div>
+                  )}
+                </article>
               ))}
             </div>
           </section>
