@@ -3,6 +3,7 @@ import re
 import uuid
 import random
 import string
+import ssl
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,7 +43,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = AsyncIOMotorClient(MONGO_URL)
+client = AsyncIOMotorClient(
+    MONGO_URL,
+    tls=True,
+    tlsAllowInvalidCertificates=True,
+)
 master_db = client[DB_NAME]
 
 security = HTTPBearer()
