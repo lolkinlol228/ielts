@@ -47,6 +47,7 @@ client = AsyncIOMotorClient(
     MONGO_URL,
     tls=True,
     tlsAllowInvalidCertificates=True,
+    serverSelectionTimeoutMS=30000
 )
 master_db = client[DB_NAME]
 
