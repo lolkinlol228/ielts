@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { AlertTriangle, Building2, CalendarClock, Download, GraduationCap, Home, KeyRound, LogOut, Menu, Palette, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { toast } from "sonner";
@@ -730,6 +730,7 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // ─── Экспорт через бэкенд ───────────────────────────────────────────────────
   const exportToExcel = async (type) => {
     try {
       const token = localStorage.getItem("token");
@@ -1528,10 +1529,11 @@ export default function AdminDashboardPage() {
 
         {activeTab === "students" && (
           <section className="card" data-testid="students-tab-content">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            {/* ── Заголовок + кнопки экспорта ── */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
               <h2 data-testid="students-title">Ученики по группам</h2>
-              <button className="primary-btn" onClick={() => exportToExcel("students")} data-testid="export-students-btn">
-                <Download size={15} /> Экспорт Excel
+              <button className="primary-btn" onClick={() => exportToExcel("students-by-groups")} data-testid="export-students-by-groups-btn">
+                <Download size={15} /> Экспорт по группам
               </button>
             </div>
             <div className="simple-list" data-testid="students-grouped-accordion">
@@ -2021,10 +2023,10 @@ export default function AdminDashboardPage() {
 
         {activeTab === "schedule" && (
           <section className="card" data-testid="schedule-tab-content">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
               <h2 data-testid="schedule-title">Конструктор расписания</h2>
-              <button className="primary-btn" onClick={() => exportToExcel("schedules")} data-testid="export-schedules-btn">
-                <Download size={15} /> Экспорт Excel
+              <button className="primary-btn" onClick={() => exportToExcel("schedule-by-groups")} data-testid="export-schedule-by-groups-btn">
+                <Download size={15} /> Экспорт по группам
               </button>
             </div>
 

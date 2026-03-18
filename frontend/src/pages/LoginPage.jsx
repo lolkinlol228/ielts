@@ -1,14 +1,59 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Lock, User } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
+
+const TEXT = {
+  ru: {
+    back: "Вернуться на главную",
+    title: "Вход в систему",
+    subtitle: "Введите данные для доступа к платформе",
+    username: "Логин",
+    usernamePlaceholder: "Введите ваш логин",
+    password: "Пароль",
+    passwordPlaceholder: "Введите ваш пароль",
+    submit: "Войти",
+    loading: "Вход...",
+    successToast: "Успешный вход",
+    errorToast: "Ошибка входа",
+  },
+  en: {
+    back: "Back to home",
+    title: "Sign in",
+    subtitle: "Enter your credentials to access the platform",
+    username: "Username",
+    usernamePlaceholder: "Enter your username",
+    password: "Password",
+    passwordPlaceholder: "Enter your password",
+    submit: "Sign in",
+    loading: "Signing in...",
+    successToast: "Logged in successfully",
+    errorToast: "Login error",
+  },
+  kk: {
+    back: "Басты бетке оралу",
+    title: "Жүйеге кіру",
+    subtitle: "Платформаға кіру үшін деректеріңізді енгізіңіз",
+    username: "Логин",
+    usernamePlaceholder: "Логиніңізді енгізіңіз",
+    password: "Құпия сөз",
+    passwordPlaceholder: "Құпия сөзіңізді енгізіңіз",
+    submit: "Кіру",
+    loading: "Кіру...",
+    successToast: "Сәтті кірдіңіз",
+    errorToast: "Кіру қатесі",
+  },
+};
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login, user, isAuthenticated } = useAuth();
   const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
+
+  const lang = localStorage.getItem("lang") || "ru";
+  const t = TEXT[lang] || TEXT.ru;
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -24,14 +69,14 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const loggedInUser = await login(form);
-      toast.success("Успешный вход");
+      toast.success(t.successToast);
       if (loggedInUser.role === "student") {
         navigate("/student/schedule");
       } else {
         navigate("/admin");
       }
     } catch (error) {
-      toast.error(error?.response?.data?.detail || "Ошибка входа");
+      toast.error(error?.response?.data?.detail || t.errorToast);
     } finally {
       setLoading(false);
     }
@@ -41,34 +86,41 @@ export default function LoginPage() {
     <div className="auth-page" data-testid="login-page-root">
       <form className="auth-card" onSubmit={submit} data-testid="login-form">
         <Link to="/" className="ghost-link" data-testid="login-back-to-home-link">
-          <ArrowLeft size={16} /> Вернуться на главную
+          <ArrowLeft size={16} /> {t.back}
         </Link>
-        <h1 data-testid="login-title">Вход в систему</h1>
-        <p data-testid="login-subtitle">Введите данные для доступа к платформе</p>
+
+        <h1 data-testid="login-title">{t.title}</h1>
+        <p data-testid="login-subtitle">{t.subtitle}</p>
 
         <label data-testid="login-label-username">
-          Логин
+          {t.username}
           <input
             value={form.username}
             onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))}
-            placeholder="Введите ваш логин"
+            placeholder={t.usernamePlaceholder}
             data-testid="login-input-username"
           />
         </label>
 
         <label data-testid="login-label-password">
-          Пароль
+          {t.password}
           <input
             type="password"
             value={form.password}
             onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-            placeholder="Введите ваш пароль"
+            placeholder={t.passwordPlaceholder}
             data-testid="login-input-password"
           />
         </label>
 
-        <button type="submit" className="primary-btn" disabled={loading} data-testid="login-submit-button" style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }}>
-          {loading ? "Вход..." : "Войти"}
+        <button
+          type="submit"
+          className="primary-btn"
+          disabled={loading}
+          data-testid="login-submit-button"
+          style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }}
+        >
+          {loading ? t.loading : t.submit}
         </button>
       </form>
     </div>

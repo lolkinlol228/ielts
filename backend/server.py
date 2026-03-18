@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import uuid
 import random
@@ -1743,7 +1743,6 @@ async def update_schedule(
     return sanitize(updated) or {**existing, **update_doc}
 
 
-
 # ─── Excel Export Helpers ──────────────────────────
 
 HEADER_FONT = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
@@ -1775,7 +1774,12 @@ def style_worksheet(ws, headers: List[str], rows: List[List], col_widths: List[i
             cell.border = THIN_BORDER
 
     for col_idx, width in enumerate(col_widths, 1):
-        ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else "A"].width = width
+        col_letter = ""
+        n = col_idx
+        while n > 0:
+            n, remainder = divmod(n - 1, 26)
+            col_letter = chr(65 + remainder) + col_letter
+        ws.column_dimensions[col_letter].width = width
 
 
 def workbook_to_response(wb: Workbook, filename: str) -> StreamingResponse:
@@ -1928,6 +1932,195 @@ async def export_graduates(
 
     style_worksheet(ws, headers, rows, [5, 30, 18, 22, 12, 14])
     return workbook_to_response(wb, "graduates_export.xlsx")
+
+
+# ─── НОВЫЕ ЭНДПОИНТЫ: Студенты по группам + Расписание по группам ──────────────────────────
+
+
+
+
+GROUP_TITLE_FONT = Font(name="Calibri", bold=True, size=13, color="1E40AF")
+GROUP_META_FONT = Font(name="Calibri", size=10, color="6B7280", italic=True)
+COL_DARK_FILL = PatternFill(start_color="374151", end_color="374151", fill_type="solid")
+COL_DARK_FONT = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
+
+
+def write_group_sheet_students(ws, group: Dict, members: List, user_map: Dict) -> None:
+    ws.column_dimensions["A"].width = 4
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 22
+    ws.row_dimensions[1].height = 8
+
+    # Title row
+    ws.merge_cells("A2:D2")
+    c = ws.cell(row=2, column=1, value=f"Группа: {group['name']}")
+    c.font = GROUP_TITLE_FONT
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[2].height = 30
+
+    # Meta row
+    group_type = "Индивидуальная" if group.get("is_individual") else "Общая"
+    created = (group.get("created_at") or "")[:10]
+    ws.merge_cells("A3:D3")
+    c = ws.cell(row=3, column=1, value=f"Тип: {group_type}    |    Создана: {created}    |    Студентов: {len(members)}")
+    c.font = GROUP_META_FONT
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[3].height = 18
+    ws.row_dimensions[4].height = 6
+
+    # Column headers
+    for col, h in enumerate(["#", "ФИО", "Телефон", "Логин"], 1):
+        c = ws.cell(row=5, column=col, value=h)
+        c.font = COL_DARK_FONT
+        c.fill = COL_DARK_FILL
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = THIN_BORDER
+    ws.row_dimensions[5].height = 22
+
+    if not members:
+        ws.merge_cells("A6:D6")
+        c = ws.cell(row=6, column=1, value="Нет студентов")
+        c.font = Font(name="Calibri", size=10, italic=True, color="9CA3AF")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        return
+
+    for i, s in enumerate(sorted(members, key=lambda x: x["full_name"]), 1):
+        row = 5 + i
+        for col, val in enumerate([i, s["full_name"], s.get("phone", ""), user_map.get(s["id"], "")], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = CELL_FONT
+            c.alignment = Alignment(horizontal="center" if col == 1 else "left", vertical="center")
+            c.border = THIN_BORDER
+        ws.row_dimensions[row].height = 20
+
+
+def write_group_sheet_schedule(ws, group: Dict, scheds: List, teacher_map: Dict, classroom_map: Dict) -> None:
+    ws.column_dimensions["A"].width = 4
+    ws.column_dimensions["B"].width = 10
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["E"].width = 28
+    ws.column_dimensions["F"].width = 14
+    ws.row_dimensions[1].height = 8
+
+    ws.merge_cells("A2:F2")
+    c = ws.cell(row=2, column=1, value=f"Группа: {group['name']}")
+    c.font = GROUP_TITLE_FONT
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[2].height = 30
+
+    group_type = "Индивидуальная" if group.get("is_individual") else "Общая"
+    ws.merge_cells("A3:F3")
+    c = ws.cell(row=3, column=1, value=f"Тип: {group_type}    |    Занятий: {len(scheds)}")
+    c.font = GROUP_META_FONT
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[3].height = 18
+    ws.row_dimensions[4].height = 6
+
+    for col, h in enumerate(["#", "День", "Начало", "Конец", "Преподаватель", "Аудитория"], 1):
+        c = ws.cell(row=5, column=col, value=h)
+        c.font = COL_DARK_FONT
+        c.fill = COL_DARK_FILL
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = THIN_BORDER
+    ws.row_dimensions[5].height = 22
+
+    if not scheds:
+        ws.merge_cells("A6:F6")
+        c = ws.cell(row=6, column=1, value="Нет занятий")
+        c.font = Font(name="Calibri", size=10, italic=True, color="9CA3AF")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        return
+
+    for i, s in enumerate(scheds, 1):
+        row = 5 + i
+        vals = [i, s["day"], s["start"], s["end"], teacher_map.get(s["teacher_id"], "-"), classroom_map.get(s["classroom_id"], "-")]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = CELL_FONT
+            c.alignment = Alignment(horizontal="center" if col <= 4 else "left", vertical="center")
+            c.border = THIN_BORDER
+        ws.row_dimensions[row].height = 20
+
+
+@app.get("/api/admin/export/students-by-groups")
+async def export_students_by_groups(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    students = await branch_db.students.find({}, {"_id": 0}).to_list(length=5000)
+    groups = await branch_db.groups.find({}, {"_id": 0}).to_list(length=1000)
+    users = await master_db.users.find(
+        {"branch_id": branch_id, "role": "student"},
+        {"_id": 0, "student_id": 1, "username": 1},
+    ).to_list(length=5000)
+
+    group_map = {g["id"]: g for g in groups}
+    user_map = {u["student_id"]: u.get("username", "") for u in users}
+
+    wb = Workbook()
+
+    # Лист 1: все студенты
+    ws_all = wb.active
+    ws_all.title = "Все студенты"
+    all_rows = []
+    for idx, s in enumerate(sorted(students, key=lambda x: x["full_name"]), 1):
+        gids = s.get("group_ids", [])
+        gnames = [group_map[gid]["name"] for gid in gids if gid in group_map]
+        all_rows.append([idx, s["full_name"], s.get("phone", ""), user_map.get(s["id"], ""), ", ".join(gnames) if gnames else "Без группы"])
+    style_worksheet(ws_all, ["#", "ФИО", "Телефон", "Логин", "Группы"], all_rows, [5, 32, 18, 20, 30])
+
+    # Отдельный лист на каждую группу
+    for g in sorted(groups, key=lambda x: x["name"]):
+        ws = wb.create_sheet(title=g["name"][:31])
+        members = [s for s in students if g["id"] in s.get("group_ids", [])]
+        write_group_sheet_students(ws, g, members, user_map)
+
+    return workbook_to_response(wb, "students_by_groups.xlsx")
+
+
+@app.get("/api/admin/export/schedule-by-groups")
+async def export_schedule_by_groups(
+    branch_id: str = Query(...),
+    user: Dict[str, Any] = Depends(require_roles("superadmin", "admin")),
+):
+    assert_branch_access(user, branch_id)
+    branch_db = await get_branch_db(branch_id)
+    schedules = await branch_db.schedules.find({}, {"_id": 0}).to_list(length=4000)
+    groups = await branch_db.groups.find({}, {"_id": 0}).to_list(length=1000)
+    teachers = await branch_db.teachers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=1000)
+    classrooms = await branch_db.classrooms.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(length=1000)
+
+    teacher_map = {t["id"]: t["name"] for t in teachers}
+    classroom_map = {c["id"]: c["name"] for c in classrooms}
+    group_map = {g["id"]: g for g in groups}
+    day_order = {day: idx for idx, day in enumerate(WEEK_DAYS)}
+
+    wb = Workbook()
+
+    # Лист 1: всё расписание
+    ws_all = wb.active
+    ws_all.title = "Всё расписание"
+    all_sorted = sorted(schedules, key=lambda s: (day_order.get(s["day"], 99), s["start"]))
+    all_rows = []
+    for idx, s in enumerate(all_sorted, 1):
+        g = group_map.get(s["group_id"], {})
+        all_rows.append([idx, g.get("name", "-"), s["day"], s["start"], s["end"], teacher_map.get(s["teacher_id"], "-"), classroom_map.get(s["classroom_id"], "-")])
+    style_worksheet(ws_all, ["#", "Группа", "День", "Начало", "Конец", "Преподаватель", "Аудитория"], all_rows, [5, 22, 8, 10, 10, 26, 14])
+
+    # Отдельный лист на каждую группу
+    for g in sorted(groups, key=lambda x: x["name"]):
+        ws = wb.create_sheet(title=g["name"][:31])
+        group_scheds = sorted(
+            [s for s in schedules if s["group_id"] == g["id"]],
+            key=lambda s: (day_order.get(s["day"], 99), s["start"]),
+        )
+        write_group_sheet_schedule(ws, g, group_scheds, teacher_map, classroom_map)
+
+    return workbook_to_response(wb, "schedule_by_groups.xlsx")
 
 
 @app.get("/api/student/schedule")
